@@ -304,7 +304,7 @@ export const ru: Record<keyof typeof en, string> = {
   'hud.clock': 'Игровое время',
   'modal.routes': 'Маршруты автобусов',
   'modal.city': 'Городские службы',
-  'fp.help': 'WASD — идти · Shift — бег · мышь — обзор · Esc — выйти',
+  'fp.help': 'WASD — идти · Shift — бег · мышь — обзор · Esc — выйти · на телефоне: слева стик, справа обзор',
   'fp.exit': 'Выйти',
   'fleet.police': 'патрульных машин',
   'fleet.garbage': 'мусоровозов',
@@ -637,6 +637,15 @@ export const ru: Record<keyof typeof en, string> = {
   'unit.days': 'дн.',
   'err.policy.none': 'Нет такой политики',
 
+  'touch.cancel': 'Отмена / к «Выбору»',
+  'touch.confirm': 'Подтвердить (Enter)',
+  'touch.rotateL': 'Повернуть влево',
+  'touch.rotateR': 'Повернуть вправо',
+  'touch.curve': 'Прямая / кривая дорога',
+  'touch.brushSmaller': 'Кисть меньше',
+  'touch.brushBigger': 'Кисть больше',
+  'touch.tiltUp': 'Наклон камеры вверх',
+  'touch.tiltDown': 'Наклон камеры вниз',
   'help.html': `
     <h4>Как играть</h4>
     <ol>

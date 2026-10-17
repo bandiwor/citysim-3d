@@ -24,6 +24,7 @@ export class UI {
   private _mapsMenu = h('div', { class: 'panel maps-menu', style: 'display:none' });
   private _advMenu = h('div', { class: 'panel maps-menu adv-menu', style: 'display:none' });
   private _tracker = h('div', { class: 'tracker' });
+  private _touchBar = h('div', { class: 'touchbar' });
   private _parts: { dispose(): void }[] = [];
   readonly fp: FirstPerson;
   private _fpBar = h('div', { class: 'fp-bar', style: 'display:none' });
@@ -100,7 +101,8 @@ export class UI {
       h('div', { class: 'fp-help', text: t('fp.help') }),
       h('button', { class: 'btn', text: `⏎ ${t('fp.exit')}`, onclick: () => this.fp.exit() }),
     );
-    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._modal.el);
+    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
+    this._buildTouchBar();
     this._advMenu.style.display = 'none';
     this._drawTracker();
     this._modal.close();
@@ -114,6 +116,23 @@ export class UI {
   }
 
   private _eventOpen = false;
+
+  /** Экранные кнопки для телефона: вместо Esc/ПКМ, Enter, поворота здания, режима кривой, кисти и наклона камеры. */
+  private _buildTouchBar(): void {
+    const cam = this._renderer.camera;
+    const b = (text: string, title: string, fn: () => void): HTMLElement => h('button', { class: 'btn icon', text, title: t(title), onclick: fn });
+    this._touchBar.replaceChildren(
+      b('✖', 'touch.cancel', () => this.input.cancel()),
+      b('✔', 'touch.confirm', () => this.input.press('Enter')),
+      b('↺', 'touch.rotateL', () => this.input.press('Comma')),
+      b('↻', 'touch.rotateR', () => this.input.press('Period')),
+      b('〰', 'touch.curve', () => this.input.press('KeyC')),
+      b('◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
+      b('◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
+      b('⤴', 'touch.tiltUp', () => cam.rotate(0, 0.18)),
+      b('⤵', 'touch.tiltDown', () => cam.rotate(0, -0.18)),
+    );
+  }
 
   openGoals(): void {
     const b = goalsBody(this._game);

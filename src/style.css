@@ -951,3 +951,199 @@ input[type='range'] {
 .goals .meter {
   width: 100%;
 }
+
+/* ---------- Телефон: сенсорный ввод и альбомная ориентация ---------- */
+html,
+body {
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+}
+.touchbar {
+  display: none;
+}
+@media (pointer: coarse) {
+  .touchbar {
+    position: fixed;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    max-height: 70vh;
+    gap: 6px;
+    z-index: 5;
+  }
+  .touchbar .btn {
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+    opacity: 0.88;
+  }
+  .fp-mode .touchbar,
+  .cell-info {
+    display: none !important;
+  }
+  .btn {
+    min-height: 40px;
+  }
+  .btn.sm {
+    min-height: 34px;
+  }
+}
+@media (pointer: coarse) and (max-height: 560px) {
+  :root {
+    font-size: 12px;
+  }
+  .hud {
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    padding: 3px 6px;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hud::-webkit-scrollbar {
+    display: none;
+  }
+  .hud > * {
+    flex: none;
+  }
+  .hud-group {
+    padding: 0 4px;
+    gap: 3px;
+  }
+  .hud-date,
+  .rci,
+  .hud-group[title*='⚡'],
+  .lv-bar {
+    display: none;
+  }
+  .hud .btn.icon {
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0;
+  }
+  .tracker {
+    display: none !important;
+  }
+  .toolbar {
+    bottom: 4px;
+    gap: 4px;
+    max-width: calc(100vw - 100px);
+    left: 4px;
+    right: auto;
+    margin: 0;
+    align-items: flex-start;
+  }
+  .tb-items,
+  .tb-cats,
+  .tb-options {
+    padding: 3px;
+    gap: 3px;
+    max-width: calc(100vw - 100px);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .tb-items::-webkit-scrollbar,
+  .tb-cats::-webkit-scrollbar {
+    display: none;
+  }
+  .btn.cat,
+  .btn.item {
+    min-width: 54px;
+    min-height: 38px;
+    padding: 2px 6px;
+    flex: none;
+  }
+  .btn.cat .lb,
+  .btn.cat .lbl,
+  .btn.item .cost {
+    display: none;
+  }
+  .btn.item .nm {
+    font-size: 10px;
+    max-width: 70px;
+    white-space: normal;
+    line-height: 1.05;
+  }
+  .btn .ic {
+    font-size: 18px;
+  }
+  .clock {
+    right: 90px;
+    bottom: auto;
+    top: 46px;
+    padding: 3px 8px;
+    gap: 6px;
+  }
+  .clock-ic {
+    font-size: 16px;
+  }
+  .clock-t {
+    font-size: 14px;
+  }
+  .clock-d {
+    display: none;
+  }
+  .toasts {
+    left: 6px;
+    bottom: 100px;
+    max-width: 240px;
+    font-size: 11px;
+  }
+  .inspector {
+    top: 44px;
+    bottom: auto;
+    right: 90px;
+    width: 250px;
+    max-height: calc(100vh - 150px);
+  }
+  .modal-box {
+    max-width: 96vw;
+    max-height: 94vh;
+    padding: 8px 10px;
+  }
+  .goals,
+  .policies,
+  .event,
+  .routes-panel {
+    min-width: 0;
+    max-height: 78vh;
+  }
+  .cols {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .start-box {
+    transform: scale(0.8);
+    transform-origin: center;
+  }
+  .touchbar {
+    right: 4px;
+    top: 44px;
+    transform: none;
+    flex-direction: row-reverse;
+    flex-wrap: wrap;
+    width: 80px;
+    gap: 4px;
+    justify-content: flex-start;
+  }
+  .touchbar .btn {
+    width: 36px;
+    height: 36px;
+    min-height: 0;
+    padding: 0;
+    font-size: 16px;
+  }
+  .maps-menu {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .fp-help {
+    display: none;
+  }
+}

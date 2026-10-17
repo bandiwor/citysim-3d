@@ -302,7 +302,7 @@ export const en = {
   'hud.clock': 'Game time',
   'modal.routes': 'Bus routes',
   'modal.city': 'City services',
-  'fp.help': 'WASD — walk · Shift — run · mouse — look · Esc — exit',
+  'fp.help': 'WASD — walk · Shift — run · mouse — look · Esc — exit · touch: left stick walks, right side looks',
   'fp.exit': 'Exit',
   'fleet.police': 'police cars',
   'fleet.garbage': 'garbage trucks',
@@ -635,6 +635,15 @@ export const en = {
   'unit.days': 'd',
   'err.policy.none': 'No such policy',
 
+  'touch.cancel': 'Cancel / back to Select',
+  'touch.confirm': 'Confirm (Enter)',
+  'touch.rotateL': 'Rotate left',
+  'touch.rotateR': 'Rotate right',
+  'touch.curve': 'Straight / curved road',
+  'touch.brushSmaller': 'Smaller brush',
+  'touch.brushBigger': 'Bigger brush',
+  'touch.tiltUp': 'Tilt camera up',
+  'touch.tiltDown': 'Tilt camera down',
   'help.html': `
     <h4>How to play</h4>
     <ol>

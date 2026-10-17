@@ -19,6 +19,10 @@ export class FirstPerson {
   private _stepDist = 0;
   private _drag = false;
   private _locked = false;
+  /** сенсорное управление: левая половина экрана — ходьба (стик), правая — обзор */
+  private _stick: { id: number; sx: number; sy: number; x: number; y: number } | null = null;
+  private _lookId = -1;
+  private _lookLast = { x: 0, y: 0 };
   onChange: (active: boolean) => void = () => {};
 
   constructor(private _game: Game, private _renderer: Renderer, private _canvas: HTMLCanvasElement, private _setLocked: (v: boolean) => void) {
@@ -33,12 +37,37 @@ export class FirstPerson {
       if (!this.active) return;
       if (this._locked || this._drag) this._look(e.movementX, e.movementY);
     });
-    _canvas.addEventListener('pointerdown', () => {
+    _canvas.addEventListener('pointerdown', (e) => {
       if (!this.active) return;
+      if (e.pointerType === 'touch') {
+        _canvas.setPointerCapture(e.pointerId);
+        if (e.clientX < window.innerWidth / 2 && !this._stick) this._stick = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
+        else if (this._lookId < 0) {
+          this._lookId = e.pointerId;
+          this._lookLast = { x: e.clientX, y: e.clientY };
+        }
+        return;
+      }
       this._drag = true;
       if (!this._locked) void this._requestLock();
     });
-    window.addEventListener('pointerup', () => (this._drag = false));
+    window.addEventListener('pointermove', (e) => {
+      if (!this.active || e.pointerType !== 'touch') return;
+      if (this._stick && e.pointerId === this._stick.id) {
+        this._stick.x = e.clientX;
+        this._stick.y = e.clientY;
+      } else if (e.pointerId === this._lookId) {
+        this._look((e.clientX - this._lookLast.x) * 1.7, (e.clientY - this._lookLast.y) * 1.7);
+        this._lookLast = { x: e.clientX, y: e.clientY };
+      }
+    });
+    const release = (e: PointerEvent): void => {
+      this._drag = false;
+      if (this._stick && e.pointerId === this._stick.id) this._stick = null;
+      if (e.pointerId === this._lookId) this._lookId = -1;
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
     document.addEventListener('pointerlockchange', () => {
       const was = this._locked;
       this._locked = document.pointerLockElement === this._canvas;
@@ -90,6 +119,8 @@ export class FirstPerson {
     this.y = this._ground(this.x, this.z);
     void this._requestLock();
     this._keys.clear();
+    this._stick = null;
+    this._lookId = -1;
     this.onChange(true);
   }
 
@@ -133,6 +164,12 @@ export class FirstPerson {
     if (k.has('KeyS') || k.has('ArrowDown')) f -= 1;
     if (k.has('KeyD') || k.has('ArrowRight')) s += 1;
     if (k.has('KeyA') || k.has('ArrowLeft')) s -= 1;
+    if (this._stick) {
+      const sx = Math.max(-1, Math.min(1, (this._stick.x - this._stick.sx) / 55));
+      const sy = Math.max(-1, Math.min(1, (this._stick.y - this._stick.sy) / 55));
+      s += sx;
+      f -= sy;
+    }
     if (k.has('KeyQ')) this.yaw += dt * 1.6;
     if (k.has('KeyE')) this.yaw -= dt * 1.6;
     if (f || s) {
