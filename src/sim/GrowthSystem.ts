@@ -2,7 +2,6 @@ import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import { clamp } from '../core/Rng';
 import type { Building } from '../core/types';
-import { Terrain } from '../world/World';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -10,7 +9,7 @@ declare module '../core/Game' {
   }
 }
 
-/** Рост застройки, апгрейды, заселение, счастье и заброшенность зданий. */
+/** Рост застройки на клетках зонирования, апгрейды, заселение, счастье и заброшенность зданий. */
 export class GrowthSystem implements System {
   readonly id = 'growth';
   readonly order = 40;
@@ -24,91 +23,93 @@ export class GrowthSystem implements System {
 
   update(dt: number): void {
     if (dt <= 0) return;
+    const c = this._game.config.growth;
     this._spawnAcc += dt;
-    while (this._spawnAcc >= 0.4) {
-      this._spawnAcc -= 0.4;
-      this._trySpawn();
+    while (this._spawnAcc >= c.spawnInterval) {
+      this._spawnAcc -= c.spawnInterval;
+      this.trySpawn();
     }
     this._evalAcc += dt;
-    if (this._evalAcc >= 1) {
+    if (this._evalAcc >= c.evalInterval) {
       const step = this._evalAcc;
       this._evalAcc = 0;
-      this._evaluate(step);
+      this.evaluate(step);
     }
   }
 
   /** Счастье здания 0..1 по службам, загрязнению, налогам, безработице и т.д. */
   happinessOf(b: Building): number {
     const g = this._game;
+    const h = g.config.happiness;
     const maps = g.get('maps');
     const st = g.get('stats');
-    const eco = g.get('economy');
-    const i = b.cell;
-    const cov = (t: string): number => maps.coverage(t)[i];
-    const rate = eco.taxes[b.zone] ?? 9;
-    let h =
-      0.3 +
-      0.15 * cov('police') +
-      0.1 * cov('fire') +
-      0.1 * cov('health') +
-      0.12 * cov('park') +
-      0.05 * cov('education') +
-      0.08 * g.get('transit').share(i) -
-      0.38 * maps.pollution[i] -
-      0.18 * maps.noise[i] -
-      Math.max(0, rate - 10) * 0.02 +
-      (b.powered ? 0.12 : -0.22) +
-      (b.watered ? 0.1 : -0.22);
-    if (b.zone === 'res') h -= 0.3 * st.unemployment * Math.min(1, st.population / 200);
-    return clamp(h, 0, 1);
+    const rate = g.get('economy').taxes[b.zone] ?? h.taxFree;
+    const at = (t: string): number => maps.sample(t, b.x, b.z);
+    let v =
+      h.base +
+      h.police * at('police') +
+      h.fire * at('fire') +
+      h.health * at('health') +
+      h.park * at('park') +
+      h.education * at('education') +
+      h.transit * g.get('transit').share(b.x, b.z) +
+      h.pollution * at('pollution') +
+      h.noise * at('noise') -
+      Math.max(0, rate - h.taxFree) * h.taxPenalty +
+      (b.powered ? h.powerOn : h.powerOff) +
+      (b.watered ? h.waterOn : h.waterOff);
+    if (g.zoneTypes.get(b.zone)?.housing) v += h.unemployment * st.unemployment * Math.min(1, st.population / h.unemploymentPop);
+    return clamp(v, 0, 1);
   }
 
-  private _trySpawn(): void {
+  /** Пытается заселить свободные размеченные клетки по текущему спросу. */
+  trySpawn(): void {
     const g = this._game;
-    const w = g.world;
+    const c = g.config.growth;
     const demand = g.get('demand').values;
     const util = g.get('utility');
     const net = g.get('network');
+    const cells = g.world.zones.list();
+    if (!cells.length) return;
     for (const z of g.zoneTypes.all()) {
       const d = demand[z.id] ?? 0;
-      if (d < 0.03) continue;
-      const attempts = Math.floor(d * 3 + Math.random());
+      if (d < c.minDemand) continue;
+      const attempts = Math.floor(d * c.spawnPerDemand + Math.random());
       for (let a = 0; a < attempts; a++) {
-        for (let tries = 0; tries < 40; tries++) {
-          const i = Math.floor(Math.random() * w.cells);
-          if (w.zone[i] !== z.index + 1 || w.occupant[i] !== 0 || w.road[i] !== 0 || w.terrain[i] !== Terrain.Land) continue;
-          const x = i % w.size;
-          const y = (i / w.size) | 0;
-          const access = g.builder.findAccess(x, y, 1, 1);
-          if (access < 0) continue;
+        for (let tries = 0; tries < c.spawnTries; tries++) {
+          const cell = cells[Math.floor(Math.random() * cells.length)];
+          if (cell.zone !== z.index + 1 || cell.building || !cell.edge) continue;
           const lv = z.levels[0];
-          if (!util.hasSpare(net.comp[access], lv.capacity * z.powerPer, lv.capacity * z.waterPer)) continue;
-          const b = g.builder.createBuilding('zone', z.id, x, y, 1, 1);
-          g.builder.addBuilding(b);
-          util.reserve(net.comp[access], b.powerNeed, b.waterNeed);
+          const comp = net.compOfEdge(cell.edge);
+          if (!util.hasSpare(comp, lv.capacity * z.powerPer, lv.capacity * z.waterPer)) continue;
+          const b = g.builder.spawnOnCell(cell, z.id);
+          b.comp = comp;
+          util.reserve(comp, b.powerNeed, b.waterNeed);
           break;
         }
       }
     }
   }
 
-  private _evaluate(dt: number): void {
+  /** Раз в секунду: счастье, заселение, апгрейды, заброшенность. */
+  evaluate(dt: number): void {
     const g = this._game;
+    const c = g.config.growth;
     const maps = g.get('maps');
     const demand = g.get('demand').values;
     const list = [...g.world.list()];
     for (const b of list) {
-      b.happiness += (this.happinessOf(b) - b.happiness) * 0.4;
+      b.happiness += (this.happinessOf(b) - b.happiness) * c.happinessSmoothing;
       if (b.kind !== 'zone') continue;
       const z = g.zoneTypes.require(b.zone);
       const lv = z.levels[b.level - 1];
-      const ok = b.powered && b.watered && b.access >= 0;
+      const ok = b.powered && b.watered && b.access > 0;
 
       if (!ok) b.outage += dt;
       else b.outage = Math.max(0, b.outage - dt * 2);
 
       if (!b.abandoned) {
-        if (b.outage > 30 || (b.happiness < 0.12 && Math.random() < 0.05)) {
+        if (b.outage > c.abandonAfterOutage || (b.happiness < c.abandonHappiness && Math.random() < c.abandonHappinessChance)) {
           b.abandoned = true;
           b.pop = 0;
           b.decay = 0;
@@ -117,35 +118,34 @@ export class GrowthSystem implements System {
         }
       } else {
         b.decay += dt;
-        if (ok && b.happiness > 0.3) {
+        // заброшенное здание не потребляет ресурсы, поэтому оживает только если в сети есть запас
+        const supplied = b.access > 0 && g.get('utility').hasSpare(b.comp, b.powerNeed, b.waterNeed);
+        if (supplied && b.happiness > c.recoverHappiness) {
           b.abandoned = false;
           b.decay = 0;
           g.bus.emit('building:updated', b);
-        } else if (b.decay > 25) {
-          g.builder.removeBuilding(b);
-        }
+        } else if (b.decay > c.removeAfterAbandon) g.builder.removeBuilding(b);
         continue;
       }
 
-      // заселение
       if (z.housing) {
-        let target = ok ? b.cap * clamp(0.25 + b.happiness * 1.1, 0, 1) : 0;
-        if ((demand[z.id] ?? 0) < -0.3) target *= 0.8;
-        const step = Math.max(1, b.cap * 0.1);
+        let target = ok ? b.cap * clamp(c.moveInBase + b.happiness * c.moveInHappiness, 0, 1) : 0;
+        if ((demand[z.id] ?? 0) < c.emigrateDemand) target *= c.emigrateFactor;
+        const step = Math.max(1, b.cap * c.moveInStep);
         if (b.pop < target) b.pop = Math.min(target, b.pop + step);
         else if (b.pop > target) b.pop = Math.max(target, b.pop - step);
         b.pop = Math.min(b.pop, b.cap);
       } else if (z.id === 'com') {
-        b.goods = clamp(b.goods - 0.012 * dt * (0.3 + b.workers / Math.max(1, b.jobs)), 0, 1);
+        b.goods = clamp(b.goods - c.goodsDecay * dt * (c.goodsActivity + b.workers / Math.max(1, b.jobs)), 0, 1);
       }
 
       if (!ok) continue;
-      const land = maps.landValue[b.cell];
-      const edu = maps.coverage('education')[b.cell];
+      const land = maps.sample('landValue', b.x, b.z);
+      const edu = maps.sample('education', b.x, b.z);
       const next = z.levels[b.level];
-      if (next && land >= next.reqLand && edu >= next.reqEdu && b.happiness > 0.55 && (demand[z.id] ?? 0) > 0.05 && Math.random() < 0.05) {
+      if (next && land >= next.reqLand && edu >= next.reqEdu && b.happiness > c.upgradeHappiness && (demand[z.id] ?? 0) > c.upgradeDemand && Math.random() < c.upgradeChance) {
         g.builder.setLevel(b, b.level + 1);
-      } else if (b.level > 1 && (land < lv.reqLand - 0.12 || b.happiness < 0.3) && Math.random() < 0.03) {
+      } else if (b.level > 1 && (land < lv.reqLand - c.downgradeLandSlack || b.happiness < c.downgradeHappiness) && Math.random() < c.downgradeChance) {
         g.builder.setLevel(b, b.level - 1);
         b.pop = Math.min(b.pop, b.cap);
       }

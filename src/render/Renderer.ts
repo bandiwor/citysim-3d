@@ -22,7 +22,7 @@ import { TerrainView } from './TerrainView';
 import { TreeView } from './TreeView';
 import { VehicleView } from './VehicleView';
 import type { View } from './View';
-import { GridView, OverlayView, ZoneLayerView } from './ZoneOverlayViews';
+import { OverlayView, ZoneLayerView } from './ZoneLayerView';
 
 const DAY_SKY = new Color(0x8fc4ee);
 const DUSK_SKY = new Color(0xe9a070);
@@ -34,9 +34,11 @@ export class Renderer {
   readonly scene = new Scene();
   readonly camera: CameraController;
   readonly preview: PreviewView;
-  readonly grid: GridView;
+  readonly zoneLayer: ZoneLayerView;
   readonly buildings: BuildingView;
   shadows = true;
+  /** ночь 0..1 для звука и освещения */
+  night = 0;
   dayNight = true;
   private _views: View[] = [];
   private _sun = new DirectionalLight(0xfff1d6, 2.4);
@@ -50,16 +52,16 @@ export class Renderer {
     this.three.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.three.outputColorSpace = SRGBColorSpace;
     this.three.toneMapping = ACESFilmicToneMapping;
-    this.three.toneMappingExposure = 0.9;
+    this.three.toneMappingExposure = _game.config.render.exposure;
     this.three.shadowMap.enabled = true;
     this.three.shadowMap.type = PCFShadowMap;
 
-    this.camera = new CameraController(canvas, _game.world.size);
+    this.camera = new CameraController(canvas, _game.world.size, _game.config.camera);
     this.scene.fog = new Fog(DAY_SKY.getHex(), 300, 1500);
     this.scene.background = DAY_SKY.clone();
 
     this._sun.castShadow = true;
-    this._sun.shadow.mapSize.set(2048, 2048);
+    this._sun.shadow.mapSize.set(_game.config.render.shadowSize, _game.config.render.shadowSize);
     this._sun.shadow.bias = -0.0004;
     this._sun.shadow.normalBias = 0.6;
     this.scene.add(this._sun, this._sun.target, this._hemi, this._amb);
@@ -67,10 +69,10 @@ export class Renderer {
     new TerrainView(this.scene, _game.world);
     this.buildings = new BuildingView(this.scene, _game);
     this.preview = new PreviewView(this.scene);
-    this.grid = new GridView(this.scene, _game.world.size);
+    this.zoneLayer = new ZoneLayerView(this.scene, _game);
     this._views.push(
       new RoadView(this.scene, _game),
-      new ZoneLayerView(this.scene, _game),
+      this.zoneLayer,
       new OverlayView(this.scene, _game),
       this.buildings,
       new TreeView(this.scene, _game),
@@ -136,6 +138,7 @@ export class Renderer {
     this._sky.copy(NIGHT_SKY).lerp(DAY_SKY, day).lerp(DUSK_SKY, dusk * 0.45 * (day > 0.02 ? 1 : 0.4));
     (this.scene.background as Color).copy(this._sky);
     (this.scene.fog as Fog).color.copy(this._sky);
-    this.buildings.materials.setNight(this.dayNight ? 1 - smoothstep(-0.05, 0.25, height) : 0);
+    this.night = this.dayNight ? 1 - smoothstep(-0.05, 0.25, height) : 0;
+    this.buildings.materials.setNight(this.night);
   }
 }

@@ -1,11 +1,16 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Mesh, MeshLambertMaterial, type Scene } from 'three';
+import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, MeshLambertMaterial, type Scene } from 'three';
 import type { Game } from '../core/Game';
-import { CELL, Terrain } from '../world/World';
+import type { RoadEdge } from '../world/RoadGraph';
+import { pointAtLength, type Vec2 } from '../world/geometry';
 import type { View } from './View';
 
-const ASPHALT_Y = 0.1;
+const ROAD_Y = 0.1;
+const CURB = 0.16;
 const SIDEWALK = 0xbdb9b0;
 const CONCRETE = 0x8d9196;
+const BRIDGE_LIFT = 0.3;
+
+type P3 = [number, number, number];
 
 /** Плоскогранные примитивы в один буфер (без индексов). */
 class Poly {
@@ -14,7 +19,7 @@ class Poly {
   col: number[] = [];
   private _c = new Color();
 
-  private _tri(a: number[], b: number[], c: number[], n: number[], color: number): void {
+  private _tri(a: P3, b: P3, c: P3, n: P3, color: number): void {
     this._c.setHex(color);
     for (const p of [a, b, c]) {
       this.pos.push(p[0], p[1], p[2]);
@@ -23,23 +28,55 @@ class Poly {
     }
   }
 
-  /** горизонтальный прямоугольник, нормаль вверх */
-  rect(x0: number, z0: number, x1: number, z1: number, y: number, color: number): void {
-    const n = [0, 1, 0];
-    this._tri([x0, y, z0], [x0, y, z1], [x1, y, z0], n, color);
-    this._tri([x1, y, z0], [x0, y, z1], [x1, y, z1], n, color);
+  /** четырёхугольник с заданной нормалью */
+  quad(a: P3, b: P3, c: P3, d: P3, n: P3, color: number): void {
+    this._tri(a, b, c, n, color);
+    this._tri(a, c, d, n, color);
   }
 
-  box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number): void {
-    this.rect(x0, z0, x1, z1, y1, color);
-    const side = (a: number[], b: number[], c: number[], d: number[], n: number[]): void => {
-      this._tri(a, b, c, n, color);
-      this._tri(c, b, d, n, color);
-    };
-    side([x0, y1, z0], [x1, y1, z0], [x0, y0, z0], [x1, y0, z0], [0, 0, -1]);
-    side([x1, y1, z1], [x0, y1, z1], [x1, y0, z1], [x0, y0, z1], [0, 0, 1]);
-    side([x0, y1, z1], [x0, y1, z0], [x0, y0, z1], [x0, y0, z0], [-1, 0, 0]);
-    side([x1, y1, z0], [x1, y1, z1], [x1, y0, z0], [x1, y0, z1], [1, 0, 0]);
+  /** лента между двумя ломаными на высоте y */
+  strip(l: Vec2[], r: Vec2[], y: number, color: number): void {
+    for (let i = 0; i < l.length - 1; i++) {
+      this.quad([l[i].x, y, l[i].z], [r[i].x, y, r[i].z], [r[i + 1].x, y, r[i + 1].z], [l[i + 1].x, y, l[i + 1].z], [0, 1, 0], color);
+    }
+  }
+
+  /** вертикальная стенка вдоль ломаной от y0 до y1; out — единичная нормаль наружу (знак по стороне) */
+  wall(line: Vec2[], y0: number, y1: number, side: number, color: number): void {
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i];
+      const b = line[i + 1];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const l = Math.hypot(dx, dz) || 1;
+      const n: P3 = [(-dz / l) * side, 0, (dx / l) * side];
+      this.quad([a.x, y0, a.z], [b.x, y0, b.z], [b.x, y1, b.z], [a.x, y1, a.z], n, color);
+    }
+  }
+
+  /** ориентированная коробка (низ не рисуется) */
+  box(cx: number, cz: number, hw: number, hd: number, rot: number, y0: number, y1: number, color: number): void {
+    const c = Math.cos(rot);
+    const s = Math.sin(rot);
+    const pt = (u: number, v: number): Vec2 => ({ x: cx + c * u * hw + s * v * hd, z: cz - s * u * hw + c * v * hd });
+    const corners = [pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1)];
+    this.quad([corners[0].x, y1, corners[0].z], [corners[1].x, y1, corners[1].z], [corners[2].x, y1, corners[2].z], [corners[3].x, y1, corners[3].z], [0, 1, 0], color);
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i];
+      const b = corners[(i + 1) % 4];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const l = Math.hypot(dx, dz) || 1;
+      this.quad([a.x, y0, a.z], [b.x, y0, b.z], [b.x, y1, b.z], [a.x, y1, a.z], [dz / l, 0, -dx / l], color);
+    }
+  }
+
+  disc(x: number, z: number, r: number, y: number, color: number, seg = 16): void {
+    for (let i = 0; i < seg; i++) {
+      const a0 = (i / seg) * Math.PI * 2;
+      const a1 = ((i + 1) / seg) * Math.PI * 2;
+      this._tri([x, y, z], [x + Math.cos(a1) * r, y, z + Math.sin(a1) * r], [x + Math.cos(a0) * r, y, z + Math.sin(a0) * r], [0, 1, 0], color);
+    }
   }
 
   build(): BufferGeometry {
@@ -52,143 +89,170 @@ class Poly {
   }
 }
 
-/** Дороги: асфальт, тротуары, разметка, мосты и остановки — одной пересобираемой геометрией. */
+/** Участок ломаной ребра между длинами s0..s1. */
+function sub(e: RoadEdge, s0: number, s1: number): Vec2[] {
+  const out: Vec2[] = [];
+  const a = pointAtLength(e.pts, e.cum, s0);
+  out.push({ x: a.x, z: a.z });
+  for (let i = 0; i < e.pts.length; i++) if (e.cum[i] > s0 + 0.3 && e.cum[i] < s1 - 0.3) out.push(e.pts[i]);
+  const b = pointAtLength(e.pts, e.cum, s1);
+  out.push({ x: b.x, z: b.z });
+  return out;
+}
+
+/** Смещённая ломаная с миттерными нормалями: offset > 0 — вправо по ходу. */
+function offsetLine(pts: Vec2[], offset: number): Vec2[] {
+  const out: Vec2[] = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(n - 1, i + 1)];
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    const tx = (b.x - a.x) / l;
+    const tz = (b.z - a.z) / l;
+    out.push({ x: pts[i].x - tz * offset, z: pts[i].z + tx * offset });
+  }
+  return out;
+}
+
+/** Дороги по графу: лента асфальта, тротуары, разметка, перекрёстки, мосты и остановки одной пересобираемой геометрией. */
 export class RoadView implements View {
   private _mesh: Mesh;
-  private _dirty = true;
+  private _version = -1;
+  private _stopsDirty = true;
 
   constructor(scene: Scene, private _game: Game) {
-    this._mesh = new Mesh(new BufferGeometry(), new MeshLambertMaterial({ vertexColors: true }));
+    this._mesh = new Mesh(new BufferGeometry(), new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }));
     this._mesh.receiveShadow = true;
     this._mesh.frustumCulled = false;
     scene.add(this._mesh);
-    _game.bus.on('roads:changed', () => (this._dirty = true));
-    _game.bus.on('stops:changed', () => (this._dirty = true));
+    _game.bus.on('stops:changed', () => (this._stopsDirty = true));
   }
 
   update(): void {
-    if (!this._dirty) return;
-    this._dirty = false;
+    const v = this._game.world.graph.version;
+    if (v === this._version && !this._stopsDirty) return;
+    this._version = v;
+    this._stopsDirty = false;
     this._mesh.geometry.dispose();
     this._mesh.geometry = this._build();
   }
 
   private _build(): BufferGeometry {
     const g = this._game;
-    const w = g.world;
-    const n = w.size;
+    const graph = g.world.graph;
     const p = new Poly();
-    const isRoad = (x: number, y: number): boolean => w.inBounds(x, y) && w.road[w.idx(x, y)] !== 0;
-    // стороны: 0=N(-z) 1=E(+x) 2=S(+z) 3=W(-x)
-    const DX = [0, 1, 0, -1];
-    const DY = [-1, 0, 1, 0];
+    const waterY = (e: RoadEdge): number => (e.bridge ? BRIDGE_LIFT : 0);
 
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const i = y * n + x;
-        const r = w.road[i];
-        if (!r) continue;
-        const t = g.roadTypes.at(r - 1);
-        const bridge = w.terrain[i] === Terrain.Water;
-        const lift = bridge ? 0.3 : 0;
-        const ay = ASPHALT_Y + lift;
-        const x0 = x * CELL;
-        const z0 = y * CELL;
-        const cx = x0 + CELL / 2;
-        const cz = z0 + CELL / 2;
-        const conn = [0, 1, 2, 3].map((s) => isRoad(x + DX[s], y + DY[s]));
-        const nconn = conn.filter(Boolean).length;
-        const shade = (x * 7 + y * 13) % 5;
-        p.rect(x0, z0, x0 + CELL, z0 + CELL, ay, t.color + shade * 0x010101);
+    for (const e of graph.edges.values()) {
+      const type = g.roadTypes.at(e.type);
+      const hw = e.hw;
+      const sw = type.id === 'highway' ? 0.6 : 1.1;
+      const lift = waterY(e);
+      const y = ROAD_Y + lift;
+      const degA = graph.nodes.get(e.a)!.edges.length;
+      const degB = graph.nodes.get(e.b)!.edges.length;
+      const trim = hw * 1.15;
+      const s0 = degA >= 3 ? trim : 0;
+      const s1 = e.len - (degB >= 3 ? trim : 0);
+      if (s1 - s0 < 1) continue;
+      const line = sub(e, s0, s1);
+      const left = offsetLine(line, -(hw - sw));
+      const right = offsetLine(line, hw - sw);
+      p.strip(left, right, y, type.color);
 
-        if (bridge) {
-          p.box(x0, -1.0, z0, x0 + CELL, ay - 0.02, z0 + CELL, CONCRETE);
-          p.box(cx - 0.8, -4.5, cz - 0.8, cx + 0.8, -1.0, cz + 0.8, 0x7c8085);
+      // тротуары / ограждения моста
+      const top = e.bridge ? y + 0.85 : y + CURB;
+      const outL = offsetLine(line, -hw);
+      const outR = offsetLine(line, hw);
+      const swColor = type.id === 'highway' ? 0x9a9c9f : e.bridge ? 0xa7abb0 : SIDEWALK;
+      p.strip(outL, left, top, swColor);
+      p.strip(right, outR, top, swColor);
+      p.wall(left, y, top, 1, swColor);
+      p.wall(right, y, top, -1, swColor);
+      if (e.bridge) {
+        p.wall(outL, y - 1.6, top, -1, CONCRETE);
+        p.wall(outR, y - 1.6, top, 1, CONCRETE);
+        for (let s = s0 + 4; s < s1 - 2; s += 12) {
+          const c = pointAtLength(e.pts, e.cum, s);
+          p.box(c.x, c.z, hw * 0.8, 0.9, Math.atan2(c.tx, c.tz), -4.5, y - 1.6, 0x7c8085);
         }
-
-        // обочины
-        const sw = t.id === 'highway' ? 0.6 : 1.1;
-        const swTop = bridge ? ay + 0.85 : ay + 0.16;
-        const swColor = t.id === 'highway' ? 0x9a9c9f : bridge ? 0xa7abb0 : SIDEWALK;
-        if (!conn[0]) p.box(x0, ay, z0, x0 + CELL, swTop, z0 + sw, swColor);
-        if (!conn[2]) p.box(x0, ay, z0 + CELL - sw, x0 + CELL, swTop, z0 + CELL, swColor);
-        if (!conn[3]) p.box(x0, ay, z0, x0 + sw, swTop, z0 + CELL, swColor);
-        if (!conn[1]) p.box(x0 + CELL - sw, ay, z0, x0 + CELL, swTop, z0 + CELL, swColor);
-        // угловые тумбы на перекрёстках
-        for (const [sa, sb, ox, oz] of [[0, 3, 0, 0], [0, 1, 1, 0], [2, 3, 0, 1], [2, 1, 1, 1]] as const) {
-          if (conn[sa] && conn[sb] && !isRoad(x + DX[sa] + DX[sb], y + DY[sa] + DY[sb])) {
-            const px = x0 + ox * (CELL - sw);
-            const pz = z0 + oz * (CELL - sw);
-            p.box(px, ay, pz, px + sw, bridge ? swTop : ay + 0.16, pz + sw, swColor);
-          }
-        }
-
-        // разметка
-        const my = ay + 0.02;
-        const line = (side: number, from: number, to: number, off: number, wd: number, color: number): void => {
-          // отрезок вдоль стороны от центра: расстояние from..to, смещение off поперёк
-          const a = DX[side] * from;
-          const b = DX[side] * to;
-          const c = DY[side] * from;
-          const d = DY[side] * to;
-          if (DX[side] !== 0) p.rect(cx + Math.min(a, b), cz + off - wd, cx + Math.max(a, b), cz + off + wd, my, color);
-          else p.rect(cx + off - wd, cz + Math.min(c, d), cx + off + wd, cz + Math.max(c, d), my, color);
-        };
-        const inter = nconn >= 3;
-        for (let s = 0; s < 4; s++) {
-          if (!conn[s]) continue;
-          if (t.id === 'street') {
-            line(s, 2, 3.4, 0, 0.12, 0xd8d8d0);
-          } else if (t.id === 'avenue') {
-            const from = inter ? 1.8 : 0;
-            if (DX[s] !== 0) p.box(cx + Math.min(DX[s] * from, DX[s] * CELL / 2), ay, cz - 0.4, cx + Math.max(DX[s] * from, (DX[s] * CELL) / 2), ay + 0.22, cz + 0.4, 0x5f8a52);
-            else p.box(cx - 0.4, ay, cz + Math.min(DY[s] * from, (DY[s] * CELL) / 2), cx + 0.4, ay + 0.22, cz + Math.max(DY[s] * from, (DY[s] * CELL) / 2), 0x5f8a52);
-            line(s, 2.4, 3.8, 3.1, 0.1, 0xd8d8d0);
-            line(s, 2.4, 3.8, -3.1, 0.1, 0xd8d8d0);
-          } else {
-            line(s, inter ? 2 : 0, CELL / 2, 0.28, 0.07, 0xe0b82e);
-            line(s, inter ? 2 : 0, CELL / 2, -0.28, 0.07, 0xe0b82e);
-            line(s, 2.2, 3.6, 2.8, 0.1, 0xe4e4e0);
-            line(s, 2.2, 3.6, -2.8, 0.1, 0xe4e4e0);
-          }
-        }
-        if (nconn === 2 && t.id === 'street') {
-          if (conn[0] && conn[2]) p.rect(cx - 0.12, cz - 0.7, cx + 0.12, cz + 0.7, my, 0xd8d8d0);
-          else if (conn[1] && conn[3]) p.rect(cx - 0.7, cz - 0.12, cx + 0.7, cz + 0.12, my, 0xd8d8d0);
-        }
-
-        // остановка
-        if (w.stop[i]) this._stop(p, x0, z0, conn, ay);
       }
-    }
-    return p.build();
-  }
 
-  private _stop(p: Poly, x0: number, z0: number, conn: boolean[], ay: number): void {
-    let side = [0, 1, 2, 3].find((s) => !conn[s]);
-    if (side === undefined) side = 0;
-    const cx = x0 + CELL / 2;
-    const cz = z0 + CELL / 2;
-    // локальные координаты: a вдоль стороны, b от внешнего края внутрь
-    const put = (a0: number, b0: number, a1: number, b1: number, y0: number, y1: number, color: number): void => {
-      const pt = (a: number, b: number): [number, number] => {
-        switch (side) {
-          case 0: return [cx + a, z0 + b];
-          case 2: return [cx + a, z0 + CELL - b];
-          case 3: return [x0 + b, cz + a];
-          default: return [x0 + CELL - b, cz + a];
+      // разметка
+      const my = y + 0.02;
+      const dash = (off: number, color: number, w = 0.12): void => {
+        for (let s = s0 + 1.5; s < s1 - 3; s += 8) {
+          const a = pointAtLength(e.pts, e.cum, s);
+          const b = pointAtLength(e.pts, e.cum, s + 3);
+          const l = offsetLine([{ x: a.x, z: a.z }, { x: b.x, z: b.z }], off - w);
+          const r = offsetLine([{ x: a.x, z: a.z }, { x: b.x, z: b.z }], off + w);
+          p.strip(l, r, my, color);
         }
       };
-      const [xa, za] = pt(a0, b0);
-      const [xb, zb] = pt(a1, b1);
-      p.box(Math.min(xa, xb), ay + y0, Math.min(za, zb), Math.max(xa, xb), ay + y1, Math.max(za, zb), color);
-    };
-    put(-1.5, 0.2, 1.5, 1.2, 2.5, 2.7, 0x2f6fb5);
-    put(-1.4, 0.25, -1.3, 0.35, 0.2, 2.5, 0x555b61);
-    put(1.3, 0.25, 1.4, 0.35, 0.2, 2.5, 0x555b61);
-    put(-1.35, 0.2, 1.35, 0.3, 0.8, 2.4, 0x9cc4e4);
-    put(-0.9, 0.5, 0.9, 0.9, 0.2, 0.6, 0x6b5a45);
-    put(1.9, 0.3, 2.0, 0.4, 0.2, 4, 0x555b61);
-    put(1.5, 0.25, 2.4, 0.45, 3.2, 4, 0x2f6fb5);
+      if (type.id === 'street') dash(0, 0xd8d8d0);
+      else if (type.id === 'avenue') {
+        p.strip(offsetLine(line, -0.5), offsetLine(line, 0.5), y + 0.22, 0x5f8a52);
+        p.wall(offsetLine(line, -0.5), y, y + 0.22, 1, 0x5f8a52);
+        p.wall(offsetLine(line, 0.5), y, y + 0.22, -1, 0x5f8a52);
+        dash(hw / 2, 0xd8d8d0, 0.1);
+        dash(-hw / 2, 0xd8d8d0, 0.1);
+      } else {
+        p.strip(offsetLine(line, -0.45), offsetLine(line, -0.2), my, 0xe0b82e);
+        p.strip(offsetLine(line, 0.2), offsetLine(line, 0.45), my, 0xe0b82e);
+        dash(hw / 2 + 0.5, 0xe4e4e0, 0.1);
+        dash(-hw / 2 - 0.5, 0xe4e4e0, 0.1);
+      }
+
+      // торец тупика
+      for (const [deg, s, at] of [[degA, s0, 0], [degB, s1, 1]] as const) {
+        if (deg !== 1) continue;
+        const c = pointAtLength(e.pts, e.cum, s);
+        p.box(c.x + c.tx * (at ? sw / 2 : -sw / 2), c.z + c.tz * (at ? sw / 2 : -sw / 2), hw, sw / 2, Math.atan2(c.tx, c.tz), y, top, swColor);
+      }
+    }
+
+    // перекрёстки и изломы
+    for (const n of graph.nodes.values()) {
+      const edges = n.edges.map((id) => graph.edges.get(id)!);
+      const hwMax = Math.max(...edges.map((e) => e.hw));
+      const color = g.roadTypes.at(edges[0].type).color;
+      const y = ROAD_Y + (edges.some((e) => e.bridge) ? BRIDGE_LIFT : 0);
+      if (edges.length >= 3) p.disc(n.x, n.z, hwMax * 1.2, y + 0.003, color);
+      else if (edges.length === 2) {
+        const dirs = edges.map((e) => {
+          const at = e.a === n.id ? 0 : e.len;
+          const q = pointAtLength(e.pts, e.cum, at);
+          return { x: q.tx * (e.a === n.id ? 1 : -1), z: q.tz * (e.a === n.id ? 1 : -1) };
+        });
+        const dot = -(dirs[0].x * dirs[1].x + dirs[0].z * dirs[1].z);
+        if (dot < 0.995) p.disc(n.x, n.z, hwMax - 0.9, y + 0.003, color);
+      }
+    }
+
+    // остановки
+    for (const s of g.world.stops) {
+      const e = graph.edges.get(s.edge);
+      if (!e) continue;
+      const c = graph.pointAt(e, s.s);
+      const rot = Math.atan2(c.tx, c.tz) + Math.PI / 2;
+      const y = ROAD_Y + waterY(e);
+      const off = e.hw - 0.6;
+      const nx = -c.tz;
+      const nz = c.tx;
+      const at = (a: number, b: number): [number, number] => [c.x + c.tx * a + nx * (off + b), c.z + c.tz * a + nz * (off + b)];
+      const box = (a: number, b: number, hwAlong: number, hdAcross: number, y0: number, y1: number, color: number): void => {
+        const [x, z] = at(a, b);
+        p.box(x, z, hwAlong, hdAcross, rot, y + y0, y + y1, color);
+      };
+      box(0, 0, 1.5, 0.5, 2.5, 2.7, 0x2f6fb5);
+      box(-1.4, 0, 0.06, 0.06, 0.2, 2.5, 0x555b61);
+      box(1.4, 0, 0.06, 0.06, 0.2, 2.5, 0x555b61);
+      box(0, 0.45, 1.35, 0.05, 0.8, 2.4, 0x9cc4e4);
+      box(0, 0.1, 0.9, 0.2, 0.2, 0.6, 0x6b5a45);
+      box(2.1, 0, 0.05, 0.05, 0.2, 4, 0x555b61);
+      box(2.1, 0, 0.5, 0.05, 3.2, 4, 0x2f6fb5);
+    }
+    return p.build();
   }
 }

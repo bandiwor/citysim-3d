@@ -1,216 +1,317 @@
+import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
-import type { Tool, ToolContext } from '../core/Tool';
-import type { Cell } from '../core/types';
-import { Terrain } from '../world/World';
-import { lineCells, rectCells } from './helpers';
-
-const fmt = (n: number): string => n.toLocaleString('ru-RU');
+import type { Tool, ToolContext, ToolOption } from '../core/Tool';
+import type { Pointer } from '../core/types';
+import { fmtMoney, t } from '../i18n';
+import type { RoadSnap } from '../sim/Builder';
+import type { Vec2 } from '../world/geometry';
 
 /** Выбор здания; перетаскивание двигает камеру. */
 export class SelectTool implements Tool {
   readonly id = 'select';
   readonly panOnDrag = true;
   constructor(private _game: Game) {}
-  up(c: Cell): void {
-    this._game.bus.emit('select', this._game.world.buildingAt(c.x, c.y) ?? null);
+  up(p: Pointer): void {
+    this._game.bus.emit('select', this._game.world.buildingAt(p.x, p.z) ?? null);
   }
 }
 
-/** Строительство дороги перетаскиванием по прямой. */
+type RoadMode = 'straight' | 'curve';
+
+/**
+ * Свободное строительство дорог: клик — начало, клик — конец (прямая); в режиме «кривая» между ними
+ * ставится опорная точка. После постройки дорога продолжается от конца. Shift — угловая привязка.
+ */
 export class RoadTool implements Tool {
   readonly id: string;
   readonly showGrid = true;
-  private _start: Cell | null = null;
+  readonly options: ToolOption[];
+  private _mode: RoadMode = 'straight';
+  private _start: RoadSnap | null = null;
+  private _ctrl: Vec2 | null = null;
+  private _downAt: Vec2 | null = null;
+  private _last: Pointer | null = null;
 
   constructor(private _game: Game, private _typeId: string) {
     this.id = `road:${_typeId}`;
+    this.options = [
+      {
+        id: 'mode',
+        labelKey: 'opt.roadMode',
+        choices: [
+          { id: 'straight', labelKey: 'opt.roadMode.straight' },
+          { id: 'curve', labelKey: 'opt.roadMode.curve' },
+        ],
+        get: () => this._mode,
+        set: (id) => {
+          this._mode = id as RoadMode;
+          this._ctrl = null;
+        },
+      },
+    ];
   }
 
-  hover(c: Cell | null, ctx: ToolContext): void {
-    if (this._start) return;
-    if (!c) return ctx.clearPreview();
-    this._show([c], ctx);
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    this._last = p;
+    this._refresh(p, ctx);
   }
 
-  down(c: Cell): void {
-    this._start = c;
+  move(p: Pointer, ctx: ToolContext): void {
+    this.hover(p, ctx);
   }
 
-  move(c: Cell, ctx: ToolContext): void {
-    if (this._start) this._show(lineCells(this._start, c), ctx);
+  down(p: Pointer, ctx: ToolContext): void {
+    const snap = this._game.builder.snap(p.x, p.z, { from: this._start ?? undefined, shift: p.shift });
+    if (!this._start) {
+      this._start = snap;
+      this._downAt = { x: p.x, z: p.z };
+    } else if (this._mode === 'curve' && !this._ctrl) {
+      this._ctrl = { x: snap.x, z: snap.z };
+    } else {
+      this._downAt = null;
+      this._finish(snap, ctx);
+    }
+    this._refresh(p, ctx);
   }
 
-  up(c: Cell, ctx: ToolContext): void {
-    if (!this._start) return;
-    const cells = lineCells(this._start, c);
-    this._start = null;
-    const r = this._game.builder.placeRoads(cells, this._typeId);
-    if (r.reason) this._game.message(r.reason, 'bad');
-    this._show([c], ctx);
+  up(p: Pointer, ctx: ToolContext): void {
+    // протяжка мышью от начала = второй клик
+    if (this._start && this._downAt && this._mode === 'straight' && Math.hypot(p.x - this._downAt.x, p.z - this._downAt.z) > 14) {
+      this._finish(this._game.builder.snap(p.x, p.z, { from: this._start, shift: p.shift }), ctx);
+    }
+    this._downAt = null;
   }
 
-  cancel(ctx: ToolContext): void {
-    this._start = null;
+  escape(ctx: ToolContext): boolean {
+    if (!this._start) return false;
+    this._reset();
     ctx.clearPreview();
+    return true;
   }
 
-  private _show(cells: Cell[], ctx: ToolContext): void {
+  deactivate(): void {
+    this._reset();
+  }
+
+  key(code: string, ctx: ToolContext): boolean {
+    if (code !== 'KeyC') return false;
+    this.options[0].set(this._mode === 'straight' ? 'curve' : 'straight');
+    if (this._last) this._refresh(this._last, ctx);
+    return true;
+  }
+
+  private _reset(): void {
+    this._start = null;
+    this._ctrl = null;
+    this._downAt = null;
+  }
+
+  private _finish(end: RoadSnap, ctx: ToolContext): void {
     const b = this._game.builder;
-    let cost = 0;
-    const pv = cells.map((c) => {
-      const ok = b.canRoad(c.x, c.y);
-      if (ok) cost += b.roadCost(c.x, c.y, this._typeId);
-      return { x: c.x, y: c.y, ok };
-    });
-    ctx.setPreview(pv, cost ? `${fmt(Math.round(cost))} ₽` : undefined);
+    const plan = b.planRoad(this._start!, end, this._ctrl, this._typeId);
+    const r = b.buildRoad(plan);
+    if (r.ok) {
+      this._start = b.snap(end.x, end.z);
+      this._ctrl = null;
+    } else if (r.reasonKey) this._game.message(r.reasonKey, undefined, 'bad');
+    void ctx;
+  }
+
+  private _refresh(p: Pointer, ctx: ToolContext): void {
+    const b = this._game.builder;
+    const snap = b.snap(p.x, p.z, { from: this._start ?? undefined, shift: p.shift });
+    const marker = { x: snap.x, z: snap.z, ok: true };
+    if (!this._start) return ctx.setPreview({ marker, ribbon: null, hint: t('hint.roadStart') });
+    const ctrl = this._mode === 'curve' ? this._ctrl : null;
+    if (this._mode === 'curve' && !this._ctrl) {
+      const plan = b.planRoad(this._start, snap, null, this._typeId);
+      return ctx.setPreview({ marker, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, hint: t('hint.roadCtrl') });
+    }
+    const plan = b.planRoad(this._start, snap, ctrl, this._typeId);
+    const hint = plan.ok ? `${fmtMoney(plan.cost)} · ${Math.round(plan.length)} ${t('unit.meters')}` : t(plan.reasonKey ?? 'err.road.short');
+    ctx.setPreview({ marker: { ...marker, ok: plan.ok }, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, hint });
   }
 }
 
-/** Зонирование прямоугольником (zoneId = null — снять зону). */
+/** Зонирование кистью по клеткам вдоль дорог (zoneId = null — снять зону). [ и ] — размер кисти. */
 export class ZoneTool implements Tool {
   readonly id: string;
   readonly showGrid = true;
-  private _start: Cell | null = null;
+  readonly options: ToolOption[];
+  private _brush: number;
+  private _painting = false;
 
   constructor(private _game: Game, private _zoneId: string | null) {
     this.id = `zone:${_zoneId ?? 'none'}`;
+    this._brush = _game.config.zoning.defaultBrush;
+    this.options = [
+      {
+        id: 'brush',
+        labelKey: 'opt.brush',
+        choices: _game.config.zoning.brushSizes.map((_, i) => ({ id: String(i), labelKey: `opt.brush.${i}` })),
+        get: () => String(this._brush),
+        set: (id) => (this._brush = Number(id)),
+      },
+    ];
   }
 
-  hover(c: Cell | null, ctx: ToolContext): void {
-    if (this._start) return;
-    if (!c) return ctx.clearPreview();
-    this._show([c], ctx);
+  private get _radius(): number {
+    return this._game.config.zoning.brushSizes[this._brush];
   }
 
-  down(c: Cell): void {
-    this._start = c;
-  }
-
-  move(c: Cell, ctx: ToolContext): void {
-    if (this._start) this._show(rectCells(this._start, c), ctx);
-  }
-
-  up(c: Cell, ctx: ToolContext): void {
-    if (!this._start) return;
-    const cells = rectCells(this._start, c);
-    this._start = null;
-    const r = this._game.builder.setZone(cells, this._zoneId);
-    if (r.reason) this._game.message(r.reason, 'bad');
-    this._show([c], ctx);
-  }
-
-  cancel(ctx: ToolContext): void {
-    this._start = null;
-    ctx.clearPreview();
-  }
-
-  private _show(cells: Cell[], ctx: ToolContext): void {
-    const w = this._game.world;
-    let n = 0;
-    const pv = cells.map((c) => {
-      const ok = this._zoneId
-        ? w.inBounds(c.x, c.y) && w.terrain[w.idx(c.x, c.y)] === Terrain.Land && w.road[w.idx(c.x, c.y)] === 0 && w.occupant[w.idx(c.x, c.y)] === 0
-        : w.inBounds(c.x, c.y) && w.zone[w.idx(c.x, c.y)] !== 0;
-      if (ok) n++;
-      return { x: c.x, y: c.y, ok };
-    });
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    const r = this._radius;
+    const target = this._zoneId ? this._game.zoneTypes.require(this._zoneId).index + 1 : 0;
+    const cells = this._game.builder.cellsInBrush(p.x, p.z, r);
+    const quads = cells.map((c) => ({ x: c.x, z: c.z, rot: c.rot, w: CELL - 0.4, d: CELL - 0.4, ok: c.zone !== target && (target === 0 || !c.building) }));
+    const n = quads.filter((q) => q.ok).length;
     const cost = this._zoneId ? n * this._game.zoneTypes.require(this._zoneId).cost : 0;
-    ctx.setPreview(pv, cost ? `${fmt(cost)} ₽` : undefined);
+    ctx.setPreview({ quads, ring: { x: p.x, z: p.z, r, ok: true }, hint: cells.length ? (cost ? `${fmtMoney(cost)} · ${n}` : String(n)) : t('hint.noCells') });
+  }
+
+  down(p: Pointer, ctx: ToolContext): void {
+    this._painting = true;
+    this._paint(p, ctx);
+  }
+
+  move(p: Pointer, ctx: ToolContext): void {
+    if (this._painting) this._paint(p, ctx);
+    else this.hover(p, ctx);
+  }
+
+  up(): void {
+    this._painting = false;
+  }
+
+  key(code: string, ctx: ToolContext): boolean {
+    const n = this._game.config.zoning.brushSizes.length;
+    if (code === 'BracketLeft') this._brush = Math.max(0, this._brush - 1);
+    else if (code === 'BracketRight') this._brush = Math.min(n - 1, this._brush + 1);
+    else return false;
+    void ctx;
+    return true;
+  }
+
+  private _paint(p: Pointer, ctx: ToolContext): void {
+    const r = this._game.builder.paintZone(p.x, p.z, this._radius, this._zoneId);
+    if (r.reasonKey) this._game.message(r.reasonKey, undefined, 'bad');
+    this.hover(p, ctx);
   }
 }
 
-/** Размещение здания-службы. */
+/** Размещение здания-службы: примагничивается к дороге фасадом к ней. , и . — поворот вне дороги. */
 export class PlaceTool implements Tool {
   readonly id: string;
   readonly showGrid = true;
+  private _rot = 0;
+  private _last: Pointer | null = null;
 
   constructor(private _game: Game, private _defId: string) {
     this.id = `service:${_defId}`;
   }
 
-  private _origin(c: Cell): Cell {
-    const d = this._game.services.require(this._defId);
-    return { x: c.x - Math.floor((d.size[0] - 1) / 2), y: c.y - Math.floor((d.size[1] - 1) / 2) };
+  private _spot(p: Pointer): { x: number; z: number; rot: number; snapped: boolean } {
+    const s = this._game.builder.snapService(this._defId, p.x, p.z);
+    return s.snapped ? s : { ...s, rot: this._rot * (Math.PI / 2) };
   }
 
-  hover(c: Cell | null, ctx: ToolContext): void {
-    if (!c) return ctx.clearPreview();
-    const d = this._game.services.require(this._defId);
-    const o = this._origin(c);
-    const res = this._game.builder.canPlaceService(this._defId, o.x, o.y);
-    const cells = [];
-    for (let dy = 0; dy < d.size[1]; dy++) for (let dx = 0; dx < d.size[0]; dx++) cells.push({ x: o.x + dx, y: o.y + dy, ok: res.ok });
-    ctx.setPreview(cells, res.ok ? `${fmt(d.cost)} ₽` : res.reason);
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    this._last = p;
+    const s = this._spot(p);
+    const res = this._game.builder.canPlaceService(this._defId, s.x, s.z, s.rot);
+    const obb = this._game.builder.serviceObb(this._defId, s.x, s.z, s.rot);
+    const def = this._game.services.require(this._defId);
+    ctx.setPreview({
+      quads: [{ x: s.x, z: s.z, rot: s.rot, w: obb.hw * 2, d: obb.hd * 2, ok: res.ok }],
+      hint: res.ok ? fmtMoney(def.cost) : t(res.reasonKey ?? 'err.occupied'),
+    });
   }
 
-  down(c: Cell, ctx: ToolContext): void {
-    const o = this._origin(c);
-    const r = this._game.builder.placeService(this._defId, o.x, o.y);
-    if (r.reason) this._game.message(r.reason, 'bad');
-    this.hover(c, ctx);
+  down(p: Pointer, ctx: ToolContext): void {
+    const s = this._spot(p);
+    const r = this._game.builder.placeService(this._defId, s.x, s.z, s.rot);
+    if (r.reasonKey) {
+      this._game.message(r.reasonKey, undefined, 'bad');
+      this._game.sfx('error');
+    }
+    this.hover(p, ctx);
   }
 
-  cancel(ctx: ToolContext): void {
-    ctx.clearPreview();
+  key(code: string, ctx: ToolContext): boolean {
+    if (code !== 'Comma' && code !== 'Period') return false;
+    this._rot = (this._rot + (code === 'Period' ? 1 : 3)) % 4;
+    if (this._last) this.hover(this._last, ctx);
+    return true;
   }
 }
 
-/** Снос прямоугольником. */
+/** Снос прямоугольником в мировых координатах. */
 export class BulldozeTool implements Tool {
   readonly id = 'bulldoze';
   readonly showGrid = true;
-  private _start: Cell | null = null;
+  private _start: Vec2 | null = null;
 
   constructor(private _game: Game) {}
 
-  hover(c: Cell | null, ctx: ToolContext): void {
-    if (this._start) return;
-    if (!c) return ctx.clearPreview();
-    ctx.setPreview([{ x: c.x, y: c.y, ok: false }]);
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    const a = this._start ?? p;
+    ctx.setPreview({
+      quads: [{ x: (a.x + p.x) / 2, z: (a.z + p.z) / 2, rot: 0, w: Math.max(CELL, Math.abs(p.x - a.x)), d: Math.max(CELL, Math.abs(p.z - a.z)), ok: false }],
+    });
   }
 
-  down(c: Cell): void {
-    this._start = c;
+  down(p: Pointer, _ctx?: ToolContext): void {
+    this._start = { x: p.x, z: p.z };
   }
 
-  move(c: Cell, ctx: ToolContext): void {
-    if (this._start) ctx.setPreview(rectCells(this._start, c).map((p) => ({ ...p, ok: false })));
+  move(p: Pointer, ctx: ToolContext): void {
+    this.hover(p, ctx);
   }
 
-  up(c: Cell, ctx: ToolContext): void {
+  up(p: Pointer, ctx: ToolContext): void {
     if (!this._start) return;
-    this._game.builder.bulldoze(rectCells(this._start, c));
+    const a = this._start;
     this._start = null;
-    ctx.setPreview([{ x: c.x, y: c.y, ok: false }]);
+    // клик без протяжки захватывает область размером с клетку
+    const pad = Math.hypot(p.x - a.x, p.z - a.z) < 3 ? CELL / 2 : 0;
+    this._game.builder.bulldozeRect(Math.min(a.x, p.x) - pad, Math.min(a.z, p.z) - pad, Math.max(a.x, p.x) + pad, Math.max(a.z, p.z) + pad);
+    this.hover(p, ctx);
   }
 
-  cancel(ctx: ToolContext): void {
+  escape(ctx: ToolContext): boolean {
+    if (!this._start) return false;
     this._start = null;
     ctx.clearPreview();
+    return true;
   }
 }
 
-/** Остановка общественного транспорта. */
+/** Автобусная остановка на дороге. */
 export class StopTool implements Tool {
   readonly id = 'stop';
   readonly showGrid = true;
   constructor(private _game: Game) {}
 
-  hover(c: Cell | null, ctx: ToolContext): void {
-    if (!c) return ctx.clearPreview();
-    const w = this._game.world;
-    const i = w.idx(c.x, c.y);
-    const ok = w.road[i] !== 0 && !w.stop[i] && this._game.roadTypes.at(w.road[i] - 1).access;
-    ctx.setPreview([{ x: c.x, y: c.y, ok }], ok ? '250 ₽' : 'Нужна дорога');
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    const g = this._game;
+    const hit = g.world.graph.nearest(p.x, p.z, g.config.roads.snapRadius + 6, (e) => e.access);
+    ctx.setPreview({
+      marker: hit ? { x: hit.x, z: hit.z, ok: true } : null,
+      hint: hit ? fmtMoney(g.config.economy.stopCost) : t('err.stop.road'),
+    });
   }
 
-  down(c: Cell, ctx: ToolContext): void {
-    const r = this._game.builder.placeStop(c.x, c.y);
-    if (r.reason) this._game.message(r.reason, 'bad');
-    this.hover(c, ctx);
-  }
-
-  cancel(ctx: ToolContext): void {
-    ctx.clearPreview();
+  down(p: Pointer, ctx: ToolContext): void {
+    const r = this._game.builder.placeStop(p.x, p.z);
+    if (r.reasonKey) {
+      this._game.message(r.reasonKey, undefined, 'bad');
+      this._game.sfx('error');
+    }
+    this.hover(p, ctx);
   }
 }

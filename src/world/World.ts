@@ -1,66 +1,87 @@
-import type { Building } from '../core/types';
-import { generateTerrain } from './Terrain';
+import { CELL } from '../config/constants';
+import type { GameConfig } from '../config/gameConfig';
+import type { Building, BusStop } from '../core/types';
+import { obbContains, type Obb } from './geometry';
+import { RoadGraph } from './RoadGraph';
+import { SpatialHash } from './SpatialHash';
+import { Terrain, type TerrainData } from './Terrain';
+import { ZoneGrid } from './ZoneGrid';
 
-/** Размер клетки в мировых единицах. */
-export const CELL = 8;
+export { CELL, Terrain };
 export const WATER_LEVEL = -0.9;
 
-/** Класс клетки по рельефу. Land — застройка; Water — вода/берег (только мосты); Blocked — холмы/горы. */
-export const Terrain = { Land: 0, Water: 1, Blocked: 2 } as const;
-
-/** Плотные массивы состояния клеток + список зданий. Не содержит логики симуляции. */
+/** Состояние мира: рельеф (сетка клеток), граф дорог, клетки зонирования, здания и остановки. Без логики симуляции. */
 export class World {
   readonly size: number;
   readonly seed: number;
   /** высоты вершин, (size+1)^2 */
   readonly heights: Float32Array;
+  /** класс рельефа клеток сетки */
   readonly terrain: Uint8Array;
-  /** тип дороги + 1 (0 — нет) */
-  readonly road: Uint8Array;
-  /** тип зоны + 1 */
-  readonly zone: Uint8Array;
-  /** id здания, занимающего клетку */
-  readonly occupant: Int32Array;
-  readonly stop: Uint8Array;
+  readonly graph = new RoadGraph();
+  readonly zones = new ZoneGrid();
   readonly buildings = new Map<number, Building>();
+  stops: BusStop[] = [];
   /** растёт при добавлении/удалении зданий — для кэшей */
   version = 0;
   private _nextId = 1;
   private _cacheVersion = -1;
   private _cache: Building[] = [];
+  private _hash = new SpatialHash(CELL * 2);
 
-  constructor(size: number, seed: number) {
-    this.size = size;
+  constructor(data: TerrainData, seed: number, readonly cfg: GameConfig) {
+    this.size = data.size;
     this.seed = seed;
-    const n = size * size;
-    this.heights = new Float32Array((size + 1) * (size + 1));
-    this.terrain = new Uint8Array(n);
-    this.road = new Uint8Array(n);
-    this.zone = new Uint8Array(n);
-    this.occupant = new Int32Array(n);
-    this.stop = new Uint8Array(n);
-    generateTerrain(this);
+    this.heights = data.heights;
+    this.terrain = data.terrain;
+  }
+
+  /** сторона карты, ед. */
+  get extent(): number {
+    return this.size * CELL;
   }
 
   get cells(): number {
     return this.size * this.size;
   }
 
-  idx(x: number, y: number): number {
-    return y * this.size + x;
-  }
-
-  inBounds(x: number, y: number): boolean {
-    return x >= 0 && y >= 0 && x < this.size && y < this.size;
-  }
-
   newId(): number {
     return this._nextId++;
   }
 
-  /** После загрузки сохранения счётчик id нужно продвинуть. */
   bumpId(id: number): void {
     if (id >= this._nextId) this._nextId = id + 1;
+  }
+
+  inBounds(x: number, z: number, margin = 0): boolean {
+    return x >= margin && z >= margin && x <= this.extent - margin && z <= this.extent - margin;
+  }
+
+  /** индекс клетки сетки под точкой (с ограничением по краям) */
+  gridIndex(x: number, z: number): number {
+    const cx = Math.min(this.size - 1, Math.max(0, Math.floor(x / CELL)));
+    const cz = Math.min(this.size - 1, Math.max(0, Math.floor(z / CELL)));
+    return cz * this.size + cx;
+  }
+
+  terrainAt(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return Terrain.Blocked;
+    return this.terrain[this.gridIndex(x, z)];
+  }
+
+  /** Худший класс рельефа под основанием (центр, углы, середины сторон). */
+  footprintTerrain(o: Obb): number {
+    const c = Math.cos(o.rot);
+    const s = Math.sin(o.rot);
+    let worst: number = Terrain.Land;
+    for (const [u, v] of [[0, 0], [-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
+      const px = o.x + c * o.hw * u + s * o.hd * v;
+      const pz = o.z - s * o.hw * u + c * o.hd * v;
+      const t = this.terrainAt(px, pz);
+      if (t === Terrain.Blocked) return t;
+      if (t === Terrain.Water) worst = t;
+    }
+    return worst;
   }
 
   vertexHeight(i: number, j: number): number {
@@ -81,10 +102,24 @@ export class World {
     return (h00 * (1 - tx) + h10 * tx) * (1 - tz) + (h01 * (1 - tx) + h11 * tx) * tz;
   }
 
-  isFree(x: number, y: number): boolean {
-    if (!this.inBounds(x, y)) return false;
-    const i = this.idx(x, y);
-    return this.terrain[i] === Terrain.Land && this.road[i] === 0 && this.occupant[i] === 0;
+  // ---------- здания ----------
+
+  obbOf(b: Building): Obb {
+    return { x: b.x, z: b.z, hw: b.w / 2, hd: b.d / 2, rot: b.rot };
+  }
+
+  registerBuilding(b: Building): void {
+    this.buildings.set(b.id, b);
+    this.bumpId(b.id);
+    const r = Math.hypot(b.w, b.d) / 2;
+    this._hash.insert(b.id, b.x - r, b.z - r, b.x + r, b.z + r);
+    this.version++;
+  }
+
+  unregisterBuilding(b: Building): void {
+    this.buildings.delete(b.id);
+    this._hash.remove(b.id);
+    this.version++;
   }
 
   /** Все здания (кэшированный массив; не модифицировать). */
@@ -96,9 +131,18 @@ export class World {
     return this._cache;
   }
 
-  buildingAt(x: number, y: number): Building | undefined {
-    if (!this.inBounds(x, y)) return undefined;
-    const id = this.occupant[this.idx(x, y)];
-    return id ? this.buildings.get(id) : undefined;
+  /** Здания, чьи габариты могут оказаться в радиусе r от точки. */
+  buildingsNear(x: number, z: number, r: number): Building[] {
+    const out: Building[] = [];
+    for (const id of this._hash.query(x - r, z - r, x + r, z + r)) {
+      const b = this.buildings.get(id);
+      if (b) out.push(b);
+    }
+    return out;
+  }
+
+  buildingAt(x: number, z: number): Building | undefined {
+    for (const b of this.buildingsNear(x, z, 1)) if (obbContains(this.obbOf(b), { x, z })) return b;
+    return undefined;
   }
 }

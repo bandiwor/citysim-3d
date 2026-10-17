@@ -27,6 +27,8 @@ function precompress(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   base: './',
+  // Воркер собирается отдельным бандлом с теми же настройками минификации (см. terserOptions)
+  worker: { format: 'es' },
   build: {
     target: 'es2022',
     minify: 'terser',

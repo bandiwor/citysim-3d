@@ -1,12 +1,7 @@
 import type { Game } from '../core/Game';
-import { h, money, fmt, signed } from './dom';
-
-const SPEEDS: [number, string, string][] = [
-  [0, '⏸', 'Пауза (Пробел)'],
-  [1, '▶', 'Скорость ×1 (1)'],
-  [2, '⏩', 'Скорость ×2 (2)'],
-  [4, '⏭', 'Скорость ×4 (3)'],
-];
+import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, t } from '../i18n';
+import { h } from './dom';
+import { dateLabel } from './format';
 
 /** Верхняя панель: дата, деньги, население, счастье, спрос RCI, скорость, меню. */
 export class Hud {
@@ -22,41 +17,50 @@ export class Hud {
   private _water = h('span', { class: 'hud-val' });
   private _bars = new Map<string, HTMLElement>();
   private _speedBtns: HTMLElement[] = [];
+  private _timer = 0;
+  private _off: () => void;
 
   constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; maps(btn: HTMLElement): void }) {
-    const bars = h('div', { class: 'rci', title: 'Спрос: жилой / коммерческий / промышленный' });
+    const bars = h('div', { class: 'rci', title: t('hud.demand') });
     for (const z of _game.zoneTypes.all()) {
       const fill = h('div', { class: 'rci-fill', style: `background:#${z.color.toString(16).padStart(6, '0')}` });
       this._bars.set(z.id, fill);
-      bars.append(h('div', { class: 'rci-bar', title: z.name }, h('div', { class: 'rci-mid' }), fill, h('span', { class: 'rci-l', text: z.name[0] })));
+      bars.append(h('div', { class: 'rci-bar', title: t(`zone.${z.id}.name`) }, h('div', { class: 'rci-mid' }), fill, h('span', { class: 'rci-l', text: t(`zone.${z.id}.short`) })));
     }
     const speeds = h('div', { class: 'speeds' });
-    for (const [v, label, title] of SPEEDS) {
-      const b = h('button', { class: 'btn icon', text: label, title, onclick: () => _game.setSpeed(v) });
+    const icons = ['⏸', '▶', '⏩', '⏭'];
+    _game.config.time.speeds.forEach((v, i) => {
+      const b = h('button', { class: 'btn icon', text: icons[i] ?? `×${v}`, title: t(v === 0 ? 'hud.pause' : 'hud.speed', { n: v }), onclick: () => _game.setSpeed(v) });
       this._speedBtns.push(b);
       speeds.append(b);
-    }
-    const mapsBtn = h('button', { class: 'btn', text: '🗺️ Карты', title: 'Тепловые карты', onclick: () => actions.maps(mapsBtn) });
+    });
+    const mapsBtn = h('button', { class: 'btn', text: `🗺️ ${t('hud.maps')}`, title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) });
     this.el = h(
       'div',
       { class: 'hud' },
-      h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', text: '☰', title: 'Меню', onclick: actions.menu }), this._date),
-      h('div', { class: 'hud-group clickable', title: 'Бюджет', onclick: actions.budget }, this._money, this._delta),
-      h('div', { class: 'hud-group clickable', title: 'Статистика', onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
-      h('div', { class: 'hud-group', title: 'Электричество / вода: производство ⁄ потребление' }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
+      h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', text: '☰', title: t('hud.menu'), onclick: actions.menu }), this._date),
+      h('div', { class: 'hud-group clickable', title: t('hud.budget'), onclick: actions.budget }, this._money, this._delta),
+      h('div', { class: 'hud-group clickable', title: t('hud.stats'), onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
+      h('div', { class: 'hud-group', title: t('hud.utilities') }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
       bars,
       h('div', { class: 'hud-spacer' }),
       mapsBtn,
       speeds,
     );
-    _game.bus.on('speed:changed', () => this._refreshSpeed());
+    const off = _game.bus.on('speed:changed', () => this._refreshSpeed());
+    this._off = off;
     this._refreshSpeed();
-    setInterval(() => this.refresh(), 250);
+    this._timer = window.setInterval(() => this.refresh(), 250);
     this.refresh();
   }
 
+  dispose(): void {
+    clearInterval(this._timer);
+    this._off();
+  }
+
   private _refreshSpeed(): void {
-    SPEEDS.forEach(([v], i) => this._speedBtns[i].classList.toggle('active', v === this._game.speed));
+    this._game.config.time.speeds.forEach((v, i) => this._speedBtns[i].classList.toggle('active', v === this._game.speed));
   }
 
   refresh(): void {
@@ -64,19 +68,19 @@ export class Hud {
     const st = g.get('stats');
     const eco = g.get('economy');
     const u = g.get('utility');
-    this._date.textContent = g.get('time').label;
-    this._money.textContent = money(eco.money);
+    this._date.textContent = dateLabel(g.get('time'));
+    this._money.textContent = fmtMoney(eco.money);
     this._money.classList.toggle('neg', eco.money < 0);
     const net = (eco.last ?? eco.computeBudget()).net;
-    this._delta.textContent = `${signed(net)}/мес`;
+    this._delta.textContent = `${fmtSigned(net)}${t('unit.perMonth')}`;
     this._delta.classList.toggle('neg', net < 0);
-    this._pop.textContent = fmt(st.population);
-    this._jobs.textContent = st.workforce > 5 ? `${fmt(st.jobsTotal)} (−${Math.round(st.unemployment * 100)}%)` : fmt(st.jobsTotal);
-    this._hap.textContent = `${Math.round(st.happiness * 100)}%`;
-    this._traf.textContent = `${Math.round(st.trafficFlow * 100)}%`;
-    this._power.textContent = `${fmt(u.powerSupply)}/${fmt(u.powerDemand)}`;
+    this._pop.textContent = fmtNumber(st.population);
+    this._jobs.textContent = st.workforce > 5 ? `${fmtNumber(st.jobsTotal)} (−${Math.round(st.unemployment * 100)}%)` : fmtNumber(st.jobsTotal);
+    this._hap.textContent = fmtPercent(st.happiness);
+    this._traf.textContent = fmtPercent(st.trafficFlow);
+    this._power.textContent = `${fmtNumber(u.powerSupply)}/${fmtNumber(u.powerDemand)}`;
     this._power.classList.toggle('neg', u.powerSupply < u.powerDemand);
-    this._water.textContent = `${fmt(u.waterSupply)}/${fmt(u.waterDemand)}`;
+    this._water.textContent = `${fmtNumber(u.waterSupply)}/${fmtNumber(u.waterDemand)}`;
     this._water.classList.toggle('neg', u.waterSupply < u.waterDemand);
     for (const [id, fill] of this._bars) {
       const v = g.get('demand').values[id] ?? 0;

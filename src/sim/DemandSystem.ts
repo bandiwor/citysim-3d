@@ -21,32 +21,39 @@ export class DemandSystem implements System {
     this._game = game;
     const st = game.get('stats');
     const eco = game.get('economy');
-    const taxPenalty = (z: string): number => ((eco.taxes[z] ?? 9) - 9) * 0.045;
+    const c = game.config.demand;
+    const taxPenalty = (z: string): number => ((eco.taxes[z] ?? c.taxSlack) - c.taxSlack) * c.taxK;
     this.formulas.set('res', () => {
-      const gap = (st.jobsTotal - st.workforce) / Math.max(60, st.jobsTotal + st.workforce);
-      const hap = (st.happiness - 0.5) * 0.7;
-      return gap * 1.5 + 0.3 + hap - taxPenalty('res');
+      const gap = (st.jobsTotal - st.workforce) / Math.max(c.res.minScale, st.jobsTotal + st.workforce);
+      return gap * c.res.gapK + c.res.base + (st.happiness - 0.5) * c.res.happinessK - taxPenalty('res');
     });
     this.formulas.set('com', () => {
-      const need = st.population * 0.28;
-      return ((need - st.jobsCom) / Math.max(40, need + st.jobsCom)) * 1.6 + 0.12 - taxPenalty('com');
+      const need = st.population * c.com.popRatio;
+      return ((need - st.jobsCom) / Math.max(c.com.minScale, need + st.jobsCom)) * c.com.gapK + c.com.base - taxPenalty('com');
     });
     this.formulas.set('ind', () => {
       const idle = st.workforce - st.jobsTotal;
-      return (idle / Math.max(60, st.workforce + st.jobsTotal)) * 1.3 + 0.2 - taxPenalty('ind') - st.pollution * 0.3;
+      return (idle / Math.max(c.ind.minScale, st.workforce + st.jobsTotal)) * c.ind.gapK + c.ind.base - taxPenalty('ind') - st.pollution * c.ind.pollutionK;
     });
     for (const z of game.zoneTypes.all()) this.values[z.id] = 0;
   }
 
   update(_dt: number, realDt: number): void {
+    const c = this._game.config.demand;
     this._timer += realDt;
-    if (this._timer < 0.5) return;
+    if (this._timer < c.interval) return;
     this._timer = 0;
+    this.refresh();
+  }
+
+  /** Пересчёт спроса со сглаживанием. */
+  refresh(): void {
+    const c = this._game.config.demand;
     for (const z of this._game.zoneTypes.all()) {
       const f = this.formulas.get(z.id);
       const target = clamp(f ? f() : 0, -1, 1);
       const cur = this.values[z.id] ?? 0;
-      this.values[z.id] = cur + (target - cur) * 0.35;
+      this.values[z.id] = cur + (target - cur) * c.smoothing;
     }
   }
 }

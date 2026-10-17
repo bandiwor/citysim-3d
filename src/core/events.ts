@@ -1,4 +1,4 @@
-import type { Building, MessageKind } from './types';
+import type { Building, MessageKind, MessageParams } from './types';
 
 export interface GameEvents {
   'roads:changed': void;
@@ -10,7 +10,10 @@ export interface GameEvents {
   'time:day': void;
   'time:month': void;
   'time:year': void;
-  message: { text: string; kind: MessageKind };
+  /** сообщение игроку: ключ словаря i18n + параметры */
+  message: { key: string; params?: MessageParams; kind: MessageKind };
+  /** звуковой эффект действия */
+  sfx: { name: string };
   'overlay:set': string | null;
   /** запрос на смену инструмента (кнопки, горячие клавиши) */
   'tool:request': string;

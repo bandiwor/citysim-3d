@@ -1,23 +1,24 @@
 import type { Game } from '../core/Game';
-import type { PreviewCell, Tool, ToolContext } from '../core/Tool';
-import type { Cell } from '../core/types';
+import type { PreviewState, Tool, ToolContext } from '../core/Tool';
+import type { Pointer } from '../core/types';
 import type { Renderer } from '../render/Renderer';
-import { CELL } from '../world/World';
+
+const emptyPreview = (): PreviewState => ({ quads: [], ribbon: null, ring: null, marker: null, hint: '' });
 
 /** Ввод мыши/клавиатуры: управление камерой и передача событий активному инструменту. */
 export class Input implements ToolContext {
   readonly game: Game;
-  hint = '';
-  private _tool: Tool | null = null;
+  shift = false;
+  tool: Tool | null = null;
   private _toolId = '';
   private _tools = new Map<string, Tool>();
   private _btn = -1;
   private _last = { x: 0, y: 0 };
   private _moved = 0;
   private _down = false;
-  private _cell: Cell | null = null;
+  private _preview = emptyPreview();
   onHint: (text: string, x: number, y: number) => void = () => {};
-  onHover: (c: Cell | null) => void = () => {};
+  onHover: (p: Pointer | null) => void = () => {};
 
   constructor(private _canvas: HTMLCanvasElement, private _renderer: Renderer, game: Game) {
     this.game = game;
@@ -26,6 +27,7 @@ export class Input implements ToolContext {
     window.addEventListener('pointerup', (e) => this._onUp(e));
     _canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => this._onKey(e));
+    window.addEventListener('keyup', (e) => (this.shift = e.shiftKey));
     game.bus.on('tool:request', (id) => this.setTool(id));
   }
 
@@ -34,10 +36,7 @@ export class Input implements ToolContext {
   }
 
   setTool(id: string): void {
-    if (this._tool) {
-      this._tool.cancel?.(this);
-      this._tool.deactivate?.(this);
-    }
+    if (this.tool) this.tool.deactivate?.(this);
     let tool = this._tools.get(id);
     if (!tool) {
       const item = this.game.toolbar.get(id);
@@ -45,33 +44,30 @@ export class Input implements ToolContext {
       tool = item.createTool(this.game);
       this._tools.set(id, tool);
     }
-    this._tool = tool;
+    this.tool = tool;
     this._toolId = id;
-    this._renderer.grid.lines.visible = !!tool.showGrid;
+    this._renderer.zoneLayer.setGridVisible(!!tool.showGrid);
     this.clearPreview();
     tool.activate?.(this);
     if (id !== 'select') this.game.bus.emit('select', null);
     this.game.bus.emit('tool:set', id);
   }
 
-  setPreview(cells: PreviewCell[], hint?: string): void {
-    this._renderer.preview.set(cells);
-    this.hint = hint ?? '';
-    this.onHint(this.hint, this._last.x, this._last.y);
+  setPreview(p: Partial<PreviewState>): void {
+    this._preview = { ...this._preview, ...p };
+    this._renderer.preview.apply(this._preview);
+    this.onHint(this._preview.hint, this._last.x, this._last.y);
   }
 
   clearPreview(): void {
+    this._preview = emptyPreview();
     this._renderer.preview.clear();
-    this.hint = '';
     this.onHint('', 0, 0);
   }
 
-  private _cellAt(e: PointerEvent | MouseEvent): Cell | null {
+  private _pointer(e: PointerEvent | MouseEvent): Pointer | null {
     const p = this._renderer.camera.groundAt(e.clientX, e.clientY);
-    if (!p) return null;
-    const x = Math.floor(p.x / CELL);
-    const y = Math.floor(p.z / CELL);
-    return this.game.world.inBounds(x, y) ? { x, y } : null;
+    return p ? { x: p.x, z: p.z, shift: e.shiftKey } : null;
   }
 
   private _onDown(e: PointerEvent): void {
@@ -80,9 +76,10 @@ export class Input implements ToolContext {
     this._last = { x: e.clientX, y: e.clientY };
     this._moved = 0;
     this._down = true;
-    if (e.button === 0 && this._tool) {
-      const c = this._cellAt(e);
-      if (c && !this._tool.panOnDrag) this._tool.down?.(c, this);
+    this.shift = e.shiftKey;
+    if (e.button === 0 && this.tool && !this.tool.panOnDrag) {
+      const p = this._pointer(e);
+      if (p) this.tool.down?.(p, this);
     }
   }
 
@@ -90,52 +87,61 @@ export class Input implements ToolContext {
     const dx = e.clientX - this._last.x;
     const dy = e.clientY - this._last.y;
     this._last = { x: e.clientX, y: e.clientY };
+    this.shift = e.shiftKey;
     const overCanvas = e.target === this._canvas;
     if (this._down) {
       this._moved += Math.abs(dx) + Math.abs(dy);
       const cam = this._renderer.camera;
       if (this._btn === 2) cam.rotate(dx * 0.006, dy * 0.005);
       else if (this._btn === 1) cam.panPixels(dx, dy);
-      else if (this._btn === 0 && this._tool?.panOnDrag && this._moved > 4) cam.panPixels(dx, dy);
+      else if (this._btn === 0 && this.tool?.panOnDrag && this._moved > 4) cam.panPixels(dx, dy);
     }
     if (!overCanvas && !this._down) return;
-    const c = this._cellAt(e);
-    this._cell = c;
-    this.onHover(c);
-    if (!this._tool) return;
-    if (this._down && this._btn === 0 && c && !this._tool.panOnDrag) this._tool.move?.(c, this);
-    else if (!this._down) this._tool.hover?.(c, this);
-    if (this.hint) this.onHint(this.hint, e.clientX, e.clientY);
+    const p = this._pointer(e);
+    this.onHover(p);
+    if (!this.tool) return;
+    if (this._down && this._btn === 0 && p && !this.tool.panOnDrag) this.tool.move?.(p, this);
+    else if (!this._down) this.tool.hover?.(p, this);
+    if (this._preview.hint) this.onHint(this._preview.hint, e.clientX, e.clientY);
   }
 
   private _onUp(e: PointerEvent): void {
     if (!this._down) return;
     this._down = false;
-    const wasBtn = this._btn;
+    const btn = this._btn;
     this._btn = -1;
-    const c = this._cellAt(e) ?? this._cell;
-    if (wasBtn === 0 && this._tool && c) {
-      if (this._tool.panOnDrag) {
-        if (this._moved <= 4) this._tool.up?.(c, this);
-      } else this._tool.up?.(c, this);
-    } else if (wasBtn === 2 && this._moved < 5 && this._toolId !== 'select') {
-      this.setTool('select');
-    }
+    const p = this._pointer(e);
+    if (btn === 0 && this.tool && p) {
+      if (!this.tool.panOnDrag || this._moved <= 4) this.tool.up?.(p, this);
+    } else if (btn === 2 && this._moved < 5) this._escape();
+  }
+
+  /** ПКМ / Esc: отменить текущую операцию инструмента, иначе вернуться к «Выбору». */
+  private _escape(): void {
+    if (this.tool?.escape?.(this)) return;
+    if (this._toolId !== 'select') this.setTool('select');
+    else this.game.bus.emit('select', null);
   }
 
   private _onKey(e: KeyboardEvent): void {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    this.shift = e.shiftKey;
     const g = this.game;
+    if (this.tool?.key?.(e.code, this)) {
+      this.game.bus.emit('tool:set', this._toolId);
+      return;
+    }
+    if (e.code === 'Escape') return this._escape();
     if (e.code === 'Space') {
       e.preventDefault();
       g.setSpeed(g.speed === 0 ? 1 : 0);
       return;
     }
-    if (e.code === 'Digit1') return g.setSpeed(1);
-    if (e.code === 'Digit2') return g.setSpeed(2);
-    if (e.code === 'Digit3') return g.setSpeed(4);
+    const speeds = g.config.time.speeds;
+    const digit = /^Digit([1-9])$/.exec(e.code);
+    if (digit && speeds[Number(digit[1])] !== undefined) return g.setSpeed(speeds[Number(digit[1])]);
     for (const item of g.toolbar.all()) {
-      if (item.hotkey === e.code) {
+      if (item.hotkey === e.code && item.hotkey !== 'Escape') {
         this.setTool(item.id);
         return;
       }

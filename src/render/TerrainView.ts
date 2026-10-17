@@ -10,7 +10,7 @@ import {
   Uint32BufferAttribute,
 } from 'three';
 import { Noise } from '../world/Noise';
-import { CELL, WATER_LEVEL, type World } from '../world/World';
+import { CELL, type World } from '../world/World';
 
 /** Рельеф с раскраской по высоте, вода и дальний фон. */
 export class TerrainView {
@@ -19,6 +19,7 @@ export class TerrainView {
 
   constructor(scene: Scene, world: World) {
     const n = world.size;
+    const WATER_LEVEL = world.cfg.world.waterLevel;
     const noise = new Noise(world.seed + 5);
     const pos = new Float32Array((n + 1) * (n + 1) * 3);
     const col = new Float32Array((n + 1) * (n + 1) * 3);

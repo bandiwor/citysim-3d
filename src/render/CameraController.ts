@@ -1,5 +1,6 @@
 import { MathUtils, PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from 'three';
-import { CELL } from '../world/World';
+import { CELL } from '../config/constants';
+import type { GameConfig } from '../config/gameConfig';
 
 /** RTS-камера: панорамирование (WASD / средняя кнопка / ЛКМ с инструментом «Выбор»), вращение (ПКМ / Q,E), масштаб (колесо). */
 export class CameraController {
@@ -15,9 +16,10 @@ export class CameraController {
   private _v = new Vector3();
   private _bounds: number;
 
-  constructor(private _el: HTMLElement, mapSize: number) {
+  constructor(private _el: HTMLElement, mapSize: number, private _cfg: GameConfig['camera']) {
     this._bounds = mapSize * CELL;
-    this.camera = new PerspectiveCamera(42, 1, 2, 2600);
+    this.distance = _cfg.startDistance;
+    this.camera = new PerspectiveCamera(_cfg.fov, 1, 2, 2600);
     this.target.set(this._bounds / 2, 0, this._bounds / 2);
     this._goal.target.copy(this.target);
     this._goal.yaw = this.yaw;
@@ -33,14 +35,14 @@ export class CameraController {
       'wheel',
       (e) => {
         e.preventDefault();
-        this.zoom(e.deltaY > 0 ? 1.12 : 1 / 1.12);
+        this.zoom(e.deltaY > 0 ? this._cfg.zoomStep : 1 / this._cfg.zoomStep);
       },
       { passive: false },
     );
   }
 
   zoom(f: number): void {
-    this._goal.distance = MathUtils.clamp(this._goal.distance * f, 35, 620);
+    this._goal.distance = MathUtils.clamp(this._goal.distance * f, this._cfg.minDistance, this._cfg.maxDistance);
   }
 
   rotate(dYaw: number, dPitch: number): void {
@@ -71,7 +73,7 @@ export class CameraController {
   update(dt: number): void {
     const g = this._goal;
     const k = this._keys;
-    const speed = this.distance * 1.1 * dt;
+    const speed = this.distance * this._cfg.panSpeed * dt;
     let fx = 0;
     let fz = 0;
     if (k.has('KeyW') || k.has('ArrowUp')) fz -= 1;
@@ -85,14 +87,14 @@ export class CameraController {
       g.target.z += (-fx * sy + fz * cy) * speed;
       this._clampGoal();
     }
-    if (k.has('KeyQ')) g.yaw -= dt * 1.6;
-    if (k.has('KeyE')) g.yaw += dt * 1.6;
+    if (k.has('KeyQ')) g.yaw -= dt * this._cfg.rotateSpeed;
+    if (k.has('KeyE')) g.yaw += dt * this._cfg.rotateSpeed;
     if (k.has('KeyR')) g.pitch = Math.min(1.4, g.pitch + dt);
     if (k.has('KeyF')) g.pitch = Math.max(0.25, g.pitch - dt);
     if (k.has('Equal') || k.has('NumpadAdd')) this.zoom(1 - dt * 1.5);
     if (k.has('Minus') || k.has('NumpadSubtract')) this.zoom(1 + dt * 1.5);
 
-    const t = 1 - Math.exp(-dt * 10);
+    const t = 1 - Math.exp(-dt * this._cfg.smoothing);
     this.target.lerp(g.target, t);
     this.yaw += (g.yaw - this.yaw) * t;
     this.pitch += (g.pitch - this.pitch) * t;

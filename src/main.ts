@@ -1,35 +1,50 @@
 import './style.css';
+import { AudioEngine } from './audio/AudioEngine';
+import { collectAmbient } from './audio/collect';
+import { mergeConfig } from './config/gameConfig';
 import { Game } from './core/Game';
 import { coreFeature, disastersFeature, roadsFeature, servicesFeature, trafficFeature, zonesFeature } from './features';
+import { detectLocale, setLocale, t } from './i18n';
 import { Renderer } from './render/Renderer';
 import { SaveSystem } from './sim/SaveSystem';
+import { h } from './ui/dom';
 import { showStartScreen } from './ui/StartScreen';
 import { UI } from './ui/UI';
+import { InlineCompute } from './workers/InlineCompute';
+import type { ComputeBackend } from './workers/protocol';
+import { WorkerCompute, workersSupported } from './workers/WorkerCompute';
+import { terrainParams } from './world/Terrain';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const root = document.getElementById('ui') as HTMLElement;
 
 async function boot(): Promise<void> {
-  const choice = await showStartScreen(root);
-  const game = new Game({ seed: choice.seed, size: 80 });
+  setLocale(detectLocale());
+  const config = mergeConfig();
+  const audio = new AudioEngine(config.audio);
+  const choice = await showStartScreen(root, config.save.key, audio);
 
-  // Подключение механик. Порядок регистрации данных важен (дороги/зоны/службы до систем, которые их читают).
-  game
-    .use(roadsFeature)
-    .use(zonesFeature)
-    .use(servicesFeature)
-    .use(trafficFeature)
-    .use(coreFeature)
-    .use(disastersFeature);
+  const loading = h('div', { class: 'start' }, h('div', { class: 'start-box' }, h('h1', { text: t('app.title') }), h('p', { text: t('start.generating') })));
+  root.append(loading);
+
+  // тяжёлые расчёты (рельеф, карты влияния, поиск пути) идут в Web Worker
+  const compute: ComputeBackend = workersSupported() ? new WorkerCompute() : new InlineCompute();
+  const terrain = await compute.generateTerrain(terrainParams(config, choice.seed));
+  const game = new Game({ seed: choice.seed, terrain, compute });
+
+  // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
+  game.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(disastersFeature);
 
   if (choice.load) {
-    const data = SaveSystem.peek();
+    const data = SaveSystem.peek(game.config.save.key);
     if (data) SaveSystem.apply(game, data);
   }
   game.start();
+  loading.remove();
 
   const renderer = new Renderer(canvas, game);
-  new UI(root, game, renderer, canvas, () => location.reload());
+  audio.attach(game);
+  const ui = new UI(root, game, renderer, canvas, audio, () => location.reload());
 
   let last = performance.now();
   const loop = (now: number): void => {
@@ -37,11 +52,12 @@ async function boot(): Promise<void> {
     last = now;
     game.step(dt);
     renderer.frame(dt, dt * game.speed);
+    const target = renderer.camera.target;
+    audio.update(dt, collectAmbient(game, { x: target.x, z: target.z, distance: renderer.camera.distance, night: renderer.night }));
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-  // Для отладки/тестов в dev-режиме.
-  if (import.meta.env.DEV) Object.assign(window, { game, renderer });
+  if (import.meta.env.DEV) Object.assign(window, { game, renderer, ui, audio });
 }
 
 void boot();

@@ -1,7 +1,9 @@
+import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
-import { clamp } from '../core/Rng';
-import { Terrain } from '../world/World';
+import { computeShore } from '../workers/maps';
+import type { MapSource, MapsOutput } from '../workers/protocol';
+import { Terrain } from '../world/Terrain';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -10,45 +12,31 @@ declare module '../core/Game' {
 }
 
 /**
- * Карты влияния по клеткам: покрытие служб (police/fire/health/education/park/…),
- * загрязнение, шум от трафика и стоимость земли. Типы покрытий задаются данными служб.
+ * Карты влияния по клеткам: покрытие служб (police/fire/health/education/park/…), загрязнение,
+ * шум от трафика и стоимость земли. Тяжёлый расчёт выполняется в воркере (ComputeBackend.computeMaps).
  */
 export class MapsSystem implements System {
   readonly id = 'maps';
   readonly order = 30;
-  pollution = new Float32Array(0);
-  noise = new Float32Array(0);
-  landValue = new Float32Array(0);
+  pollution: Float32Array = new Float32Array(0);
+  noise: Float32Array = new Float32Array(0);
+  landValue: Float32Array = new Float32Array(0);
   version = 0;
-  private _coverage = new Map<string, Float32Array>();
-  private _shore = new Float32Array(0);
+  private _layers = new Map<string, Float32Array>();
+  private _shore: Float32Array = new Float32Array(0);
   private _game!: Game;
   private _dirty = true;
+  private _busy = false;
   private _timer = 0;
   private _utilVersion = -1;
 
   init(game: Game): void {
     this._game = game;
-    const n = game.world.cells;
-    this.pollution = new Float32Array(n);
-    this.noise = new Float32Array(n);
-    this.landValue = new Float32Array(n).fill(0.3);
-    this._shore = new Float32Array(n);
     const w = game.world;
-    for (let y = 0; y < w.size; y++) {
-      for (let x = 0; x < w.size; x++) {
-        let near = false;
-        for (let dy = -3; dy <= 3 && !near; dy++) {
-          for (let dx = -3; dx <= 3; dx++) {
-            if (w.inBounds(x + dx, y + dy) && w.terrain[w.idx(x + dx, y + dy)] === Terrain.Water) {
-              near = true;
-              break;
-            }
-          }
-        }
-        this._shore[y * w.size + x] = near ? 0.1 : 0;
-      }
-    }
+    this.pollution = new Float32Array(w.cells);
+    this.noise = new Float32Array(w.cells);
+    this.landValue = new Float32Array(w.cells).fill(game.config.maps.landValue.base);
+    this._shore = computeShore(w.terrain, w.size, game.config.maps.shoreRadius, game.config.maps.shoreBonus, Terrain.Water);
     const mark = (): void => {
       this._dirty = true;
     };
@@ -58,91 +46,95 @@ export class MapsSystem implements System {
     game.bus.on('economy:changed', mark);
   }
 
+  /** Слой покрытия (создаётся пустым при первом обращении). */
   coverage(type: string): Float32Array {
-    let a = this._coverage.get(type);
-    if (!a) this._coverage.set(type, (a = new Float32Array(this._game.world.cells)));
+    if (type === 'pollution') return this.pollution;
+    if (type === 'noise') return this.noise;
+    if (type === 'landValue') return this.landValue;
+    let a = this._layers.get(type);
+    if (!a) this._layers.set(type, (a = new Float32Array(this._game.world.cells)));
     return a;
   }
 
+  /** Значение слоя в точке мира. */
+  sample(type: string, x: number, z: number): number {
+    return this.coverage(type)[this._game.world.gridIndex(x, z)];
+  }
+
   update(_dt: number, realDt: number): void {
+    const c = this._game.config.maps;
     this._timer += realDt;
     const uv = this._game.get('utility').version;
     if (uv !== this._utilVersion) {
       this._utilVersion = uv;
       this._dirty = true;
     }
-    if ((this._dirty && this._timer > 0.4) || this._timer > 3) {
+    if (this._busy) return;
+    if ((this._dirty && this._timer > c.interval) || this._timer > c.maxInterval) {
       this._timer = 0;
       this._dirty = false;
-      this.recompute();
+      void this.recompute();
     }
   }
 
-  recompute(): void {
+  /** Собирает источники влияния по зданиям и трафику. */
+  collectSources(): MapSource[] {
     const g = this._game;
-    const w = g.world;
-    const n = w.size;
-    for (const a of this._coverage.values()) a.fill(0);
-    this.pollution.fill(0);
-    this.noise.fill(0);
+    const c = g.config.maps;
     const funding = g.get('economy').funding;
-
-    const stamp = (arr: Float32Array, cx: number, cy: number, r: number, s: number, additive: boolean): void => {
-      const x0 = Math.max(0, Math.floor(cx - r));
-      const x1 = Math.min(n - 1, Math.ceil(cx + r));
-      const y0 = Math.max(0, Math.floor(cy - r));
-      const y1 = Math.min(n - 1, Math.ceil(cy + r));
-      for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) {
-          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
-          if (d >= 1) continue;
-          const v = s * (1 - d * d);
-          const i = y * n + x;
-          if (additive) arr[i] += v;
-          else if (v > arr[i]) arr[i] = v;
-        }
-      }
-    };
-
-    for (const b of w.list()) {
-      const cx = b.x + b.w / 2;
-      const cy = b.y + b.h / 2;
+    const sources: MapSource[] = [];
+    for (const b of g.world.list()) {
+      if (b.abandoned) continue;
       if (b.kind === 'service') {
         const d = g.services.require(b.defId);
-        if (b.abandoned) continue;
         const working = b.powered || d.powerNeed === 0;
         if (d.coverage && working) {
-          const f = funding[d.fundingGroup] ?? 1;
-          stamp(this.coverage(d.coverage.type), cx, cy, d.coverage.radius, d.coverage.strength * Math.min(1.3, f), false);
+          const f = Math.min(c.maxFundingEffect, funding[d.fundingGroup] ?? 1);
+          sources.push({ layer: d.coverage.type, x: b.x, z: b.z, r: d.coverage.radius * CELL, strength: d.coverage.strength * f, additive: false });
         }
-        if (d.pollution) stamp(this.pollution, cx, cy, d.pollution.radius, d.pollution.strength, true);
-      } else if (!b.abandoned) {
-        const z = g.zoneTypes.require(b.zone);
-        const p = z.levels[b.level - 1].pollution;
-        if (p > 0) stamp(this.pollution, cx, cy, 5, 0.6 * p, true);
+        if (d.pollution) sources.push({ layer: 'pollution', x: b.x, z: b.z, r: d.pollution.radius * CELL, strength: d.pollution.strength, additive: true });
+      } else {
+        const p = g.zoneTypes.require(b.zone).levels[b.level - 1].pollution;
+        if (p > 0) sources.push({ layer: 'pollution', x: b.x, z: b.z, r: c.industryPollutionRadius * CELL, strength: c.industryPollution * p, additive: true });
       }
     }
-
-    // шум от дорожного движения
-    const occ = g.get('traffic').occupancy;
-    for (let i = 0; i < occ.length; i++) {
-      if (occ[i] > 1) stamp(this.noise, (i % n) + 0.5, ((i / n) | 0) + 0.5, 2.5, Math.min(0.25, occ[i] * 0.03), true);
+    const traffic = g.get('traffic');
+    for (const [edgeId, n] of traffic.occupancy) {
+      if (n <= 1) continue;
+      const e = g.world.graph.edges.get(edgeId);
+      if (!e) continue;
+      const mid = g.world.graph.pointAt(e, e.len / 2);
+      sources.push({ layer: 'noise', x: mid.x, z: mid.z, r: c.noiseRadius * CELL, strength: Math.min(c.noiseCap, n * c.noisePerCar), additive: true });
     }
+    return sources;
+  }
 
-    const park = this.coverage('park');
-    const pol = this.coverage('police');
-    const hea = this.coverage('health');
-    const fir = this.coverage('fire');
-    const edu = this.coverage('education');
-    for (let i = 0; i < w.cells; i++) {
-      this.pollution[i] = Math.min(1, this.pollution[i]);
-      this.noise[i] = Math.min(1, this.noise[i]);
-      this.landValue[i] = clamp(
-        0.27 + 0.25 * park[i] + 0.12 * pol[i] + 0.1 * hea[i] + 0.08 * fir[i] + 0.1 * edu[i] + this._shore[i] - 0.5 * this.pollution[i] - 0.2 * this.noise[i],
-        0,
-        1,
-      );
+  async recompute(): Promise<void> {
+    const g = this._game;
+    const c = g.config.maps;
+    this._busy = true;
+    try {
+      const out = await g.compute.computeMaps({
+        size: g.world.size,
+        cell: CELL,
+        sources: this.collectSources(),
+        layers: ['pollution', 'noise', ...g.services.all().flatMap((s) => (s.coverage ? [s.coverage.type] : []))],
+        shore: this._shore,
+        landValue: c.landValue,
+      });
+      this.apply(out);
+    } finally {
+      this._busy = false;
     }
+  }
+
+  apply(out: MapsOutput): void {
+    for (const [name, arr] of Object.entries(out.layers)) {
+      if (name === 'pollution') this.pollution = arr;
+      else if (name === 'noise') this.noise = arr;
+      else this._layers.set(name, arr);
+    }
+    this.landValue = out.landValue;
     this.version++;
   }
 }

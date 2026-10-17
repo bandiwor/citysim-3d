@@ -12,9 +12,7 @@ export interface ZoneLevel {
 }
 
 export interface ZoneType extends Indexed {
-  name: string;
   icon: string;
-  desc: string;
   color: number;
   /** жилая зона: даёт население */
   housing: boolean;
@@ -28,7 +26,7 @@ export interface ZoneType extends Indexed {
 
 export const ZONES: ZoneType[] = [
   {
-    id: 'res', index: 0, name: 'Жилая', icon: '🏠', desc: 'Дома и жилые комплексы. Нужны дорога, электричество и вода.',
+    id: 'res', index: 0, icon: '🏠',
     color: 0x4caf50, housing: true, wage: 24, powerPer: 0.4, waterPer: 0.5, cost: 2,
     levels: [
       { capacity: 8, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 0 },
@@ -37,7 +35,7 @@ export const ZONES: ZoneType[] = [
     ],
   },
   {
-    id: 'com', index: 0, name: 'Коммерческая', icon: '🏪', desc: 'Магазины и офисы: рабочие места и налоги.',
+    id: 'com', index: 0, icon: '🏪',
     color: 0x2196f3, housing: false, wage: 26, powerPer: 0.8, waterPer: 0.3, cost: 2,
     levels: [
       { capacity: 7, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 0 },
@@ -46,7 +44,7 @@ export const ZONES: ZoneType[] = [
     ],
   },
   {
-    id: 'ind', index: 0, name: 'Промышленная', icon: '🏭', desc: 'Заводы: много рабочих мест, но загрязняют воздух.',
+    id: 'ind', index: 0, icon: '🏭',
     color: 0xffc107, housing: false, wage: 19, powerPer: 1.5, waterPer: 0.6, cost: 2,
     levels: [
       { capacity: 12, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 1.0 },

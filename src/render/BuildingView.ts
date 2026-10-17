@@ -1,7 +1,6 @@
 import { Color, Matrix4, Quaternion, Vector3, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import type { Building } from '../core/types';
-import { CELL } from '../world/World';
 import { BuildingMaterials } from './Materials';
 import { InstancePool } from './InstancePool';
 import { serviceModel, zoneModel } from './models';
@@ -49,7 +48,7 @@ export class BuildingView implements View {
     const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}` : b.defId;
     let pool = this._pools.get(key);
     if (!pool) {
-      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant) : serviceModel(this._game.services.require(b.defId).model, b.w, b.h);
+      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant) : serviceModel(this._game.services.require(b.defId).model, this._game.services.require(b.defId).size[0], this._game.services.require(b.defId).size[1]);
       pool = new InstancePool(geo, this.materials.material, b.kind === 'zone' ? 2600 : 200);
       this._pools.set(key, pool);
       this._scene.add(pool.mesh);
@@ -83,8 +82,8 @@ export class BuildingView implements View {
 
   private _write(b: Building, s: Slot): void {
     const k = s.grow < 1 ? 1 - (1 - s.grow) ** 3 : 1;
-    this._p.set((b.x + b.w / 2) * CELL, 0.12, (b.y + b.h / 2) * CELL);
-    this._q.setFromAxisAngle(this._yAxis, b.kind === 'service' && b.w > 1 ? 0 : (b.rot * Math.PI) / 2);
+    this._p.set(b.x, 0.12, b.z);
+    this._q.setFromAxisAngle(this._yAxis, b.rot);
     this._s.set(1, Math.max(0.02, k), 1);
     s.pool.set(b.id, this._m.compose(this._p, this._q, this._s), s.grow === 0 ? s.color : undefined);
   }

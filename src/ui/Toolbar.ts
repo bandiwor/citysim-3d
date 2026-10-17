@@ -1,26 +1,37 @@
 import type { Game } from '../core/Game';
-import { h, fmt } from './dom';
+import type { Tool } from '../core/Tool';
+import { fmtNumber, t } from '../i18n';
+import { h } from './dom';
 
-/** Нижняя панель: категории → инструменты (строится по реестру game.toolbar). */
+/** Нижняя панель: категории → инструменты (строится по реестру game.toolbar) + опции активного инструмента. */
 export class Toolbar {
   readonly el: HTMLElement;
   private _items = h('div', { class: 'tb-items' });
+  private _options = h('div', { class: 'tb-options' });
   private _cats = h('div', { class: 'tb-cats' });
   private _open = '';
   private _catBtns = new Map<string, HTMLElement>();
   private _itemBtns = new Map<string, HTMLElement>();
+  private _offs: (() => void)[] = [];
 
-  constructor(private _game: Game) {
+  constructor(private _game: Game, private _getTool: () => Tool | null) {
     for (const c of _game.categories) {
-      const b = h('button', { class: 'btn cat', title: c.name, onclick: () => this._toggle(c.id) }, h('span', { class: 'ic', text: c.icon }), h('span', { class: 'lb', text: c.name }));
+      const b = h('button', { class: 'btn cat', title: t(`category.${c.id}.name`), onclick: () => this._toggle(c.id) }, h('span', { class: 'ic', text: c.icon }), h('span', { class: 'lb', text: t(`category.${c.id}.name`) }));
       this._catBtns.set(c.id, b);
       this._cats.append(b);
     }
-    this.el = h('div', { class: 'toolbar' }, this._items, this._cats);
-    _game.bus.on('tool:set', (id) => this._highlight(id));
-    _game.bus.on('economy:changed', () => this._affordable());
+    this.el = h('div', { class: 'toolbar' }, this._options, this._items, this._cats);
+    this._offs.push(
+      _game.bus.on('tool:set', (id) => this._highlight(id)),
+      _game.bus.on('economy:changed', () => this._affordable()),
+    );
     this._affordable();
     this._toggle('roads');
+    this._renderOptions();
+  }
+
+  dispose(): void {
+    for (const f of this._offs) f();
   }
 
   private _toggle(id: string): void {
@@ -33,22 +44,50 @@ export class Toolbar {
     for (const it of this._game.toolbar.all().filter((i) => i.category === this._open)) {
       const b = h(
         'button',
-        { class: 'btn item', title: it.desc ?? it.name, onclick: () => this._game.bus.emit('tool:request', it.id) },
+        { class: 'btn item', title: it.descKey ? t(it.descKey) : t(it.nameKey), onclick: () => this._game.bus.emit('tool:request', it.id) },
         h('span', { class: 'ic', text: it.icon }),
-        h('span', { class: 'nm', text: it.name }),
-        it.cost ? h('span', { class: 'cost', text: `₽${fmt(it.cost)}` }) : null,
+        h('span', { class: 'nm', text: t(it.nameKey) }),
+        it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
       );
       this._itemBtns.set(it.id, b);
       this._items.append(b);
     }
     this._affordable();
+    this._markActive(this._getTool()?.id ?? '');
   }
 
-  private _highlight(id: string): void {
+  private _markActive(id: string): void {
     for (const [iid, b] of this._itemBtns) b.classList.toggle('active', iid === id);
+  }
+
+  /** Инструмент сменился (кнопка, горячая клавиша): открыть его категорию и подсветить кнопку. */
+  private _highlight(id: string): void {
     const item = this._game.toolbar.get(id);
     if (item && item.category !== this._open && id !== 'select') this._toggle(item.category);
-    for (const [iid, b] of this._itemBtns) b.classList.toggle('active', iid === id);
+    this._markActive(id);
+    this._renderOptions();
+  }
+
+  private _renderOptions(): void {
+    const tool = this._getTool();
+    this._options.replaceChildren();
+    const opts = tool?.options ?? [];
+    this._options.style.display = opts.length ? 'flex' : 'none';
+    for (const o of opts) {
+      const row = h('div', { class: 'opt' }, h('span', { class: 'opt-l', text: t(o.labelKey) }));
+      for (const c of o.choices) {
+        const b = h('button', {
+          class: `btn sm${o.get() === c.id ? ' active' : ''}`,
+          text: t(c.labelKey),
+          onclick: () => {
+            o.set(c.id);
+            this._renderOptions();
+          },
+        });
+        row.append(b);
+      }
+      this._options.append(row);
+    }
   }
 
   private _affordable(): void {

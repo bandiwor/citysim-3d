@@ -1,7 +1,7 @@
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building } from '../core/types';
-import { CELL } from '../world/World';
+import type { PathStep } from './NetworkSystem';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -14,28 +14,30 @@ export type VehicleKind = 'car' | 'truck' | 'bus';
 export interface Vehicle {
   id: number;
   kind: VehicleKind;
-  path: number[];
-  /** индекс текущей клетки пути */
+  steps: PathStep[];
+  /** ревизии рёбер на момент прокладки пути */
+  revs: number[];
+  /** индекс текущего шага */
   i: number;
-  /** прогресс внутри клетки 0..1 */
-  t: number;
+  /** положение на текущем ребре (длина дуги от начала ребра) */
+  s: number;
+  /** где остановиться на последнем ребре */
+  endS: number;
   x: number;
   z: number;
   yaw: number;
+  /** сглаживающее смещение после смены ребра */
+  ox: number;
+  oz: number;
   color: number;
   speedMul: number;
-  /** секунд ожидания (остановка) */
+  /** секунд ожидания (остановка/расчёт пути) */
   wait: number;
+  /** возраст, секунд */
+  age: number;
   dead: boolean;
-  /** Вызывается по прибытии. Вернуть true, если машине назначен новый путь; иначе она исчезает. */
+  /** Вызывается по прибытии. Вернуть true, если машина продолжает жить (ей назначен новый путь). */
   onArrive?: (v: Vehicle) => boolean;
-  // кривая текущего сегмента (квадратичный Безье)
-  p0x: number;
-  p0z: number;
-  cx: number;
-  cz: number;
-  p1x: number;
-  p1z: number;
 }
 
 interface PendingTrip {
@@ -46,38 +48,51 @@ interface PendingTrip {
 }
 
 const CAR_COLORS = [0xd94b4b, 0x3f7fd9, 0xe8e8e8, 0x2b2b2e, 0xf0c33c, 0x4aa86b, 0x8a8f98, 0xb36bd1, 0xe98a3a];
+const rnd = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 
-/** Автомобили, грузовики и автобусы: поиск пути, движение по кривым, пробки. */
+/** Автомобили, грузовики и автобусы: движение по рёбрам графа, асинхронный поиск пути в воркере, пробки. */
 export class TrafficSystem implements System {
   readonly id = 'traffic';
   readonly order = 50;
   vehicles: Vehicle[] = [];
-  occupancy = new Uint16Array(0);
+  /** число машин на ребре (id ребра → n) */
+  occupancy = new Map<number, number>();
   /** средняя относительная скорость 0..1 */
   flow = 1;
-  maxVehicles = 420;
   private _game!: Game;
   private _nextId = 1;
   private _acc = 0;
   private _truckAcc = 0;
   private _clock = 0;
+  private _syncAcc = 0;
   private _pending: PendingTrip[] = [];
+  private _requests = 0;
   private _homes: Building[] = [];
   private _works: Building[] = [];
   private _shops: Building[] = [];
   private _inds: Building[] = [];
   private _listVersion = -1;
-  private _roadsDirty = false;
+  private _graphVersion = -1;
 
   init(game: Game): void {
     this._game = game;
-    this.occupancy = new Uint16Array(game.world.cells);
-    game.get('network').occupancy = this.occupancy;
-    game.bus.on('roads:changed', () => (this._roadsDirty = true));
   }
 
-  update(dt: number): void {
-    if (this._roadsDirty) this._validate();
+  get clock(): number {
+    return this._clock;
+  }
+
+  update(dt: number, realDt: number): void {
+    const graph = this._game.world.graph;
+    if (graph.version !== this._graphVersion) {
+      this._graphVersion = graph.version;
+      this._validate();
+    }
+    this._syncAcc += realDt;
+    if (this._syncAcc >= this._game.config.traffic.occupancySync) {
+      this._syncAcc = 0;
+      this._game.get('network').syncOccupancy(this.occupancy);
+    }
     if (dt <= 0) return;
     this._clock += dt;
     this._refreshLists();
@@ -87,53 +102,74 @@ export class TrafficSystem implements System {
     this._move(dt);
   }
 
-  /** Создаёт машину на пути. Возвращает null, если путь слишком короткий или лимит исчерпан. */
-  spawn(path: number[] | null, kind: VehicleKind, color?: number): Vehicle | null {
-    if (!path || path.length < 2 || this.vehicles.length >= this.maxVehicles + (kind === 'bus' ? 40 : 0)) return null;
+  /** Загрузка ребра: машин / вместимость. */
+  load(edgeId: number): number {
+    const e = this._game.world.graph.edges.get(edgeId);
+    if (!e) return 0;
+    return (this.occupancy.get(edgeId) ?? 0) / this._game.get('network').capacityOf(e);
+  }
+
+  /** Создаёт машину на пути. null — путь пуст или лимит исчерпан. */
+  spawn(steps: PathStep[] | null, fromS: number, endS: number, kind: VehicleKind, color?: number): Vehicle | null {
+    const c = this._game.config.traffic;
+    if (!steps || !steps.length) return null;
+    if (this.vehicles.length >= c.maxVehicles + (kind === 'bus' ? c.busExtra : 0)) return null;
+    const graph = this._game.world.graph;
+    if (steps.some((s) => !graph.edges.has(s.edge))) return null;
+    const [lo, hi] = c.speedMul[kind] ?? [1, 1];
     const v: Vehicle = {
       id: this._nextId++,
       kind,
-      path,
+      steps,
+      revs: steps.map((s) => graph.edges.get(s.edge)!.rev),
       i: 0,
-      t: 0.5,
+      s: fromS,
+      endS,
       x: 0,
       z: 0,
       yaw: 0,
+      ox: 0,
+      oz: 0,
       color: color ?? CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
-      speedMul: kind === 'bus' ? 0.85 : kind === 'truck' ? 0.8 : 0.9 + Math.random() * 0.2,
+      speedMul: rnd(lo, hi),
       wait: 0,
+      age: 0,
       dead: false,
-      p0x: 0,
-      p0z: 0,
-      cx: 0,
-      cz: 0,
-      p1x: 0,
-      p1z: 0,
     };
-    this.occupancy[path[0]]++;
-    this._enter(v);
-    this._place(v);
+    this._occ(steps[0].edge, 1);
+    this._place(v, true);
     this.vehicles.push(v);
     return v;
   }
 
-  /** Назначает уже существующей машине новый путь (для автобусов). */
-  reroute(v: Vehicle, path: number[] | null): boolean {
-    if (!path || path.length < 2) return false;
-    this.occupancy[v.path[v.i]] = Math.max(0, this.occupancy[v.path[v.i]] - 1);
-    v.path = path;
+  /** Назначает существующей машине новый путь (автобусы). */
+  reroute(v: Vehicle, steps: PathStep[] | null, fromS: number, endS: number): boolean {
+    if (!steps || !steps.length) return false;
+    const graph = this._game.world.graph;
+    if (steps.some((s) => !graph.edges.has(s.edge))) return false;
+    this._occ(v.steps[v.i].edge, -1);
+    v.steps = steps;
+    v.revs = steps.map((s) => graph.edges.get(s.edge)!.rev);
     v.i = 0;
-    v.t = 0.5;
-    this.occupancy[path[0]]++;
-    this._enter(v);
+    v.s = fromS;
+    v.endS = endS;
+    v.wait = 0;
+    this._occ(steps[0].edge, 1);
+    this._place(v, true);
     return true;
   }
 
   kill(v: Vehicle): void {
     if (v.dead) return;
     v.dead = true;
-    const c = v.path[v.i];
-    if (this.occupancy[c] > 0) this.occupancy[c]--;
+    const step = v.steps[v.i];
+    if (step) this._occ(step.edge, -1);
+  }
+
+  private _occ(edge: number, d: number): void {
+    const n = (this.occupancy.get(edge) ?? 0) + d;
+    if (n <= 0) this.occupancy.delete(edge);
+    else this.occupancy.set(edge, n);
   }
 
   // ---------- генерация поездок ----------
@@ -147,8 +183,8 @@ export class TrafficSystem implements System {
     this._shops = [];
     this._inds = [];
     for (const b of w.list()) {
-      if (b.abandoned || b.access < 0) continue;
-      if (b.zone === 'res') this._homes.push(b);
+      if (b.abandoned || !b.access) continue;
+      if (this._game.zoneTypes.get(b.zone)?.housing) this._homes.push(b);
       else if (b.jobs > 0) {
         this._works.push(b);
         if (b.zone === 'com') this._shops.push(b);
@@ -158,11 +194,12 @@ export class TrafficSystem implements System {
   }
 
   private _spawnTrips(dt: number): void {
+    const c = this._game.config.traffic;
     const pop = this._game.get('stats').population;
-    if (pop < 15 || !this._homes.length || !this._works.length) return;
+    if (pop < c.minPopulation || !this._homes.length || !this._works.length) return;
     const tod = this._game.get('time').tod;
-    const bump = Math.max(Math.exp(-(((tod - 0.33) / 0.06) ** 2)), Math.exp(-(((tod - 0.72) / 0.06) ** 2)));
-    this._acc += pop * 0.0045 * (0.5 + 0.9 * bump) * dt;
+    const bump = Math.max(Math.exp(-(((tod - c.rushMorning) / c.rushWidth) ** 2)), Math.exp(-(((tod - c.rushEvening) / c.rushWidth) ** 2)));
+    this._acc += pop * c.tripsPerPop * (c.rushBase + c.rushAmp * bump) * dt;
     let guard = 4;
     while (this._acc >= 1 && guard-- > 0) {
       this._acc -= 1;
@@ -173,176 +210,189 @@ export class TrafficSystem implements System {
 
   private _newTrip(): void {
     const g = this._game;
+    const c = g.config.traffic;
     const home = this._homes[Math.floor(Math.random() * this._homes.length)];
     if (home.pop < 1 || !home.powered) return;
-    const pool = Math.random() < 0.35 && this._shops.length ? this._shops : this._works;
+    const pool = Math.random() < c.shopShare && this._shops.length ? this._shops : this._works;
     const dest = pool[Math.floor(Math.random() * pool.length)];
     if (!dest || dest.comp !== home.comp || dest.comp < 0) return;
     const transit = g.get('transit');
-    if (Math.random() < transit.share(home.cell)) {
+    if (Math.random() < transit.share(home.x, home.z)) {
       transit.rider();
       return;
     }
     const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
-    const v = this.spawn(g.get('network').findPath(home.access, dest.access), 'car', color);
-    if (!v) return;
-    v.onArrive = () => {
-      this._pending.push({ at: this._clock + 3 + Math.random() * 9, from: dest, to: home, color });
-      return false;
-    };
+    this._trip(home, dest, 'car', color, (v) => {
+      v.onArrive = () => {
+        this._pending.push({ at: this._clock + rnd(c.dwell[0], c.dwell[1]), from: dest, to: home, color });
+        return false;
+      };
+    });
+  }
+
+  /** Асинхронно прокладывает путь и создаёт машину. */
+  private _trip(from: Building, to: Building, kind: VehicleKind, color: number, init?: (v: Vehicle) => void): void {
+    if (this._requests >= this._game.config.traffic.maxPendingPaths) return;
+    this._requests++;
+    void this._game
+      .get('network')
+      .requestPath(from.access, from.accessS, to.access, to.accessS)
+      .then((steps) => {
+        const v = this.spawn(steps, from.accessS, to.accessS, kind, color);
+        if (v) init?.(v);
+      })
+      .finally(() => {
+        this._requests--;
+      });
   }
 
   private _flushPending(): void {
     if (!this._pending.length) return;
-    const net = this._game.get('network');
     const keep: PendingTrip[] = [];
+    const w = this._game.world;
     for (const p of this._pending) {
       if (p.at > this._clock) keep.push(p);
-      else if (this._game.world.buildings.has(p.from.id) && this._game.world.buildings.has(p.to.id)) {
-        this.spawn(net.findPath(p.from.access, p.to.access), 'car', p.color);
-      }
+      else if (w.buildings.has(p.from.id) && w.buildings.has(p.to.id) && p.from.access && p.to.access) this._trip(p.from, p.to, 'car', p.color);
     }
     this._pending = keep;
   }
 
   private _spawnTrucks(dt: number): void {
+    const c = this._game.config.traffic;
     if (!this._inds.length || !this._shops.length) return;
-    this._truckAcc += dt * Math.min(1.2, this._inds.length * 0.05);
+    this._truckAcc += dt * Math.min(c.truckRate, this._inds.length * c.truckPerIndustry);
     if (this._truckAcc < 1) return;
     this._truckAcc = 0;
     const from = this._inds[Math.floor(Math.random() * this._inds.length)];
     let best: Building | null = null;
     for (let k = 0; k < 5; k++) {
-      const c = this._shops[Math.floor(Math.random() * this._shops.length)];
-      if (c.comp === from.comp && (!best || c.goods < best.goods)) best = c;
+      const s = this._shops[Math.floor(Math.random() * this._shops.length)];
+      if (s.comp === from.comp && (!best || s.goods < best.goods)) best = s;
     }
-    if (!best) return;
+    if (!best || from.comp < 0) return;
     const target = best;
-    const v = this.spawn(this._game.get('network').findPath(from.access, target.access), 'truck', 0xf2f2f2);
-    if (v) {
+    this._trip(from, target, 'truck', 0xf2f2f2, (v) => {
       v.onArrive = () => {
-        target.goods = Math.min(1, target.goods + 0.4);
+        target.goods = Math.min(1, target.goods + c.goodsPerTruck);
         return false;
       };
-    }
+    });
   }
 
   // ---------- движение ----------
 
   private _move(dt: number): void {
-    const w = this._game.world;
+    const game = this._game;
+    const graph = game.world.graph;
+    const decay = Math.exp(-dt * game.config.traffic.offsetDecay);
     let flowSum = 0;
     let flowN = 0;
+    const net = game.get('network');
     for (const v of this.vehicles) {
       if (v.dead) continue;
-      if (v.wait > 0) {
-        v.wait -= dt;
-        continue;
-      }
-      const c = v.path[v.i];
-      const r = w.road[c];
-      if (!r) {
+      v.ox *= decay;
+      v.oz *= decay;
+      v.age += dt;
+      if (v.age > game.config.traffic.maxAge && v.kind !== 'bus') {
         this.kill(v);
         continue;
       }
-      const type = this._game.roadTypes.at(r - 1);
-      const k = this.occupancy[c] / type.capacity;
-      const f = 1 / (1 + k * k * 2.2);
+      if (v.wait > 0) {
+        v.wait -= dt;
+        this._place(v, false);
+        continue;
+      }
+      const step = v.steps[v.i];
+      const e = graph.edges.get(step.edge);
+      if (!e || e.rev !== v.revs[v.i]) {
+        this.kill(v);
+        continue;
+      }
+      const type = game.roadTypes.at(e.type);
+      const k = (this.occupancy.get(e.id) ?? 0) / net.capacityOf(e);
+      const f = Math.max(game.config.traffic.minFlow, 1 / (1 + k * k * game.config.traffic.congestionPower));
       flowSum += f;
       flowN++;
-      v.t += (type.speed * f * v.speedMul * dt) / CELL;
-      const last = v.i === v.path.length - 1;
-      if ((last && v.t >= 0.5) || v.t >= 1) {
+      v.s += step.dir * type.speed * f * v.speedMul * dt;
+
+      const last = v.i === v.steps.length - 1;
+      const limit = last ? v.endS : step.dir > 0 ? e.len : 0;
+      const done = step.dir > 0 ? v.s >= limit : v.s <= limit;
+      if (done) {
         if (last) {
           const again = v.onArrive?.(v) ?? false;
           if (!again) this.kill(v);
           continue;
         }
-        this.occupancy[c]--;
+        this._occ(step.edge, -1);
         v.i++;
-        v.t = Math.max(0, v.t - 1);
-        this.occupancy[v.path[v.i]]++;
-        this._enter(v);
+        const next = v.steps[v.i];
+        const ne = graph.edges.get(next.edge);
+        if (!ne) {
+          this.kill(v);
+          continue;
+        }
+        const px = v.x;
+        const pz = v.z;
+        v.s = next.dir > 0 ? 0 : ne.len;
+        this._occ(next.edge, 1);
+        this._place(v, false);
+        const jx = px - v.x;
+        const jz = pz - v.z;
+        if (Math.hypot(jx, jz) < 10) {
+          v.ox += jx - v.ox;
+          v.oz += jz - v.oz;
+          v.x = px;
+          v.z = pz;
+        }
+        continue;
       }
-      this._place(v);
+      this._place(v, false);
     }
     this.vehicles = this.vehicles.filter((v) => !v.dead);
     const target = flowN ? flowSum / flowN : 1;
-    this.flow += (target - this.flow) * Math.min(1, dt * 0.5);
+    this.flow += (target - this.flow) * Math.min(1, dt * game.config.traffic.flowSmoothing);
   }
 
-  /** Строит кривую прохождения текущей клетки пути. */
-  private _enter(v: Vehicle): void {
-    const w = this._game.world;
-    const n = w.size;
-    const path = v.path;
-    const i = v.i;
-    const c = path[i];
-    const cx = ((c % n) + 0.5) * CELL;
-    const cz = (((c / n) | 0) + 0.5) * CELL;
-    const dir = (a: number, b: number): [number, number] => {
-      const dx = (b % n) - (a % n);
-      const dz = ((b / n) | 0) - ((a / n) | 0);
-      return [Math.sign(dx), Math.sign(dz)];
-    };
-    let din: [number, number];
-    let dout: [number, number];
-    if (i > 0) din = dir(path[i - 1], c);
-    else din = dir(c, path[1]);
-    if (i < path.length - 1) dout = dir(c, path[i + 1]);
-    else dout = din;
-    const r = w.road[c];
-    const lane = r ? this._game.roadTypes.at(r - 1).laneOffset : 1.3;
-    const pin: [number, number] = [-din[1], din[0]];
-    const pout: [number, number] = [-dout[1], dout[0]];
-    const dot = din[0] * dout[0] + din[1] * dout[1];
-    const kk = dot > -0.5 ? 1 / (1 + dot) : 0;
-    v.p0x = cx - (din[0] * CELL) / 2 + pin[0] * lane;
-    v.p0z = cz - (din[1] * CELL) / 2 + pin[1] * lane;
-    v.p1x = cx + (dout[0] * CELL) / 2 + pout[0] * lane;
-    v.p1z = cz + (dout[1] * CELL) / 2 + pout[1] * lane;
-    v.cx = cx + (pin[0] + pout[0]) * lane * kk;
-    v.cz = cz + (pin[1] + pout[1]) * lane * kk;
+  /** Вычисляет мировую позицию и курс по положению на ребре. */
+  private _place(v: Vehicle, snap: boolean): void {
+    const graph = this._game.world.graph;
+    const step = v.steps[v.i];
+    const e = graph.edges.get(step.edge);
+    if (!e) return;
+    const p = graph.pointAt(e, v.s);
+    const tx = p.tx * step.dir;
+    const tz = p.tz * step.dir;
+    const lane = this._game.roadTypes.at(e.type).laneOffset;
+    // правый борт по ходу движения
+    const tx0 = p.x - tz * lane;
+    const tz0 = p.z + tx * lane;
+    v.x = tx0 + v.ox;
+    v.z = tz0 + v.oz;
+    const target = Math.atan2(-tz, tx);
+    let d = target - v.yaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    v.yaw = snap ? target : v.yaw + d * 0.3;
   }
 
-  private _place(v: Vehicle): void {
-    const t = Math.min(1, v.t);
-    const u = 1 - t;
-    v.x = u * u * v.p0x + 2 * u * t * v.cx + t * t * v.p1x;
-    v.z = u * u * v.p0z + 2 * u * t * v.cz + t * t * v.p1z;
-    const dx = 2 * u * (v.cx - v.p0x) + 2 * t * (v.p1x - v.cx);
-    const dz = 2 * u * (v.cz - v.p0z) + 2 * t * (v.p1z - v.cz);
-    if (dx !== 0 || dz !== 0) {
-      const target = Math.atan2(-dz, dx);
-      let d = target - v.yaw;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      v.yaw += d * 0.35;
-    }
-  }
-
-  /** После изменения дорог убираем машины на исчезнувших клетках и пересчитываем занятость. */
+  /** После изменения дорог убираем машины на исчезнувших/изменённых рёбрах и пересчитываем занятость. */
   private _validate(): void {
-    this._roadsDirty = false;
-    const w = this._game.world;
-    this.occupancy.fill(0);
+    const graph = this._game.world.graph;
+    this.occupancy.clear();
     for (const v of this.vehicles) {
       if (v.dead) continue;
       let ok = true;
-      for (let k = v.i; k < v.path.length; k++) {
-        if (!w.road[v.path[k]]) {
+      for (let k = v.i; k < v.steps.length; k++) {
+        const e = graph.edges.get(v.steps[k].edge);
+        if (!e || e.rev !== v.revs[k]) {
           ok = false;
           break;
         }
       }
       if (!ok) v.dead = true;
-      else this.occupancy[v.path[v.i]]++;
+      else this._occ(v.steps[v.i].edge, 1);
     }
     this.vehicles = this.vehicles.filter((v) => !v.dead);
-  }
-
-  /** Часы симуляции в секундах (для отложенных событий). */
-  get clock(): number {
-    return this._clock;
   }
 }

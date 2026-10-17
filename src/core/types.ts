@@ -10,16 +10,20 @@ export interface Building {
   zone: string;
   level: number;
   variant: number;
-  rot: number;
+  /** центр, мировые координаты */
   x: number;
-  y: number;
+  z: number;
+  /** рыскание: локальная +Z (фасад) смотрит на дорогу */
+  rot: number;
+  /** размеры основания, ед. */
   w: number;
-  h: number;
-  /** индекс клетки-якоря */
+  d: number;
+  /** id клетки зонирования (0 — у служб) */
   cell: number;
-  /** индекс клетки дороги, к которой подключено здание (-1 — нет) */
+  /** ребро дороги, к которому подключено здание (0 — нет) */
   access: number;
-  /** компонента связности дорожной сети */
+  accessS: number;
+  /** компонента связности дорожной сети (-1 — нет) */
   comp: number;
   pop: number;
   cap: number;
@@ -43,9 +47,23 @@ export interface Building {
   fire: number;
 }
 
-export interface Cell {
+export interface BusStop {
+  id: number;
+  edge: number;
+  s: number;
   x: number;
-  y: number;
+  z: number;
 }
 
 export type MessageKind = 'info' | 'good' | 'warn' | 'bad';
+
+export interface MessageParams {
+  [k: string]: string | number;
+}
+
+/** Точка на карте в мировых координатах. */
+export interface Pointer {
+  x: number;
+  z: number;
+  shift: boolean;
+}

@@ -1,22 +1,34 @@
 import { Color, Matrix4, MeshLambertMaterial, type Scene } from 'three';
+import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
 import { Rng } from '../core/Rng';
+import { obbDist } from '../world/geometry';
 import { Noise } from '../world/Noise';
-import { CELL, Terrain } from '../world/World';
+import { Terrain } from '../world/Terrain';
 import { InstancePool } from './InstancePool';
 import { treeModel } from './models';
 import type { View } from './View';
 
 const PER_CELL = 4;
 
-/** Декоративные деревья; исчезают с клеток, на которых что-то построено или размечено. */
+interface Tree {
+  id: number;
+  x: number;
+  z: number;
+}
+
+/** Декоративные деревья; исчезают там, где проложена дорога, размечена зона или стоит здание. */
 export class TreeView implements View {
   private _pool: InstancePool;
-  private _cells = new Set<number>();
-  private _dirty = false;
+  private _trees: Tree[] = [];
+  private _graphVersion = -1;
+  private _zoneVersion = -1;
+  private _worldVersion = -1;
+  private _timer = 0;
+  private _force = true;
 
   constructor(scene: Scene, private _game: Game) {
-    this._pool = new InstancePool(treeModel(), new MeshLambertMaterial({ vertexColors: true }), 9000);
+    this._pool = new InstancePool(treeModel(), new MeshLambertMaterial({ vertexColors: true }), _game.config.render.treeLimit);
     scene.add(this._pool.mesh);
     const w = _game.world;
     const rng = new Rng(w.seed + 99);
@@ -39,27 +51,35 @@ export class TreeView implements View {
         const s = 0.8 + rng.next() * 0.7;
         m.makeScale(s, s * (0.9 + rng.next() * 0.4), s).setPosition(wx, w.heightAt(wx, wz) - 0.1, wz);
         const shade = 0.7 + rng.next() * 0.5;
-        this._pool.set(i * PER_CELL + k, m, col.setRGB(shade * 0.9, shade, shade * 0.85).getHex());
+        const id = i * PER_CELL + k;
+        this._pool.set(id, m, col.setRGB(shade * 0.9, shade, shade * 0.85).getHex());
+        this._trees.push({ id, x: wx, z: wz });
       }
-      this._cells.add(i);
     }
-    const mark = (): void => {
-      this._dirty = true;
-    };
-    for (const e of ['roads:changed', 'zones:changed'] as const) _game.bus.on(e, mark);
-    mark();
   }
 
-  update(): void {
-    if (!this._dirty) return;
-    this._dirty = false;
+  private _blocked(x: number, z: number): boolean {
     const w = this._game.world;
-    for (const i of this._cells) {
-      if (w.terrain[i] !== Terrain.Land) continue;
-      if (w.road[i] || w.occupant[i] || w.zone[i]) {
-        for (let k = 0; k < PER_CELL; k++) this._pool.remove(i * PER_CELL + k);
-        this._cells.delete(i);
-      }
-    }
+    if (w.graph.clearance(x, z, 6) < 1.8) return true;
+    for (const c of w.zones.near(x, z, CELL * 0.8)) if (c.zone || c.building) return true;
+    for (const b of w.buildingsNear(x, z, 12)) if (obbDist(w.obbOf(b), { x, z }) < 1.5) return true;
+    return false;
+  }
+
+  update(realDt: number): void {
+    const w = this._game.world;
+    this._timer += realDt;
+    const changed = w.graph.version !== this._graphVersion || w.zones.version !== this._zoneVersion || w.version !== this._worldVersion;
+    if (!this._force && (!changed || this._timer < 0.3)) return;
+    this._timer = 0;
+    this._force = false;
+    this._graphVersion = w.graph.version;
+    this._zoneVersion = w.zones.version;
+    this._worldVersion = w.version;
+    this._trees = this._trees.filter((t) => {
+      if (!this._blocked(t.x, t.z)) return true;
+      this._pool.remove(t.id);
+      return false;
+    });
   }
 }

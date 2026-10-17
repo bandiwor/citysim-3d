@@ -19,7 +19,6 @@ export class UtilitySystem implements System {
   powerDemand = 0;
   waterSupply = 0;
   waterDemand = 0;
-  /** остаток по компонентам */
   private _powerLeft = new Float64Array(0);
   private _waterLeft = new Float64Array(0);
   private _game!: Game;
@@ -39,12 +38,13 @@ export class UtilitySystem implements System {
 
   update(_dt: number, realDt: number): void {
     const net = this._game.get('network');
+    const c = this._game.config.utilities;
     this._timer += realDt;
     if (net.version !== this._netVersion) {
       this._netVersion = net.version;
       this._dirty = true;
     }
-    if ((this._dirty && this._timer > 0.2) || this._timer > 2) {
+    if ((this._dirty && this._timer > c.interval) || this._timer > c.maxInterval) {
       this._timer = 0;
       this._dirty = false;
       this.recompute();
@@ -72,10 +72,12 @@ export class UtilitySystem implements System {
     this.powerSupply = this.powerDemand = this.waterSupply = this.waterDemand = 0;
     const list = g.world.list();
 
-    for (const b of list) if (b.comp >= 0 && b.powerOut > 0 && !b.abandoned) pLeft[b.comp] += b.powerOut;
-    for (const b of list) if (b.powerOut > 0 && !b.abandoned) this.powerSupply += b.powerOut;
-
-    // Электричество: потребители по возрастанию id (list уже в порядке вставки).
+    for (const b of list) {
+      if (b.powerOut > 0 && !b.abandoned) {
+        this.powerSupply += b.powerOut;
+        if (b.comp >= 0) pLeft[b.comp] += b.powerOut;
+      }
+    }
     for (const b of list) {
       const need = b.abandoned ? 0 : b.powerNeed;
       this.powerDemand += need;
@@ -85,8 +87,6 @@ export class UtilitySystem implements System {
         b.powered = true;
       } else b.powered = false;
     }
-
-    // Вода: производят только запитанные станции.
     for (const b of list) {
       if (b.waterOut > 0 && b.powered && !b.abandoned) {
         this.waterSupply += b.waterOut;

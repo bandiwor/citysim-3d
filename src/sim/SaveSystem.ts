@@ -7,21 +7,53 @@ declare module '../core/Game' {
   }
 }
 
+interface SavedNode {
+  id: number;
+  x: number;
+  z: number;
+}
+interface SavedEdge {
+  id: number;
+  a: number;
+  b: number;
+  /** id типа дороги */
+  t: string;
+  br: 0 | 1;
+  /** ломаная [x0, z0, x1, z1, …] */
+  p: number[];
+}
+interface SavedCell {
+  id: number;
+  x: number;
+  z: number;
+  r: number;
+  tx: number;
+  tz: number;
+  nx: number;
+  nz: number;
+  row: number;
+  /** id зоны ('' — нет) */
+  zone: string;
+}
 interface SavedBuilding {
+  id: number;
   k: 'zone' | 'service';
   d: string;
   x: number;
-  y: number;
+  z: number;
+  r: number;
+  w: number;
+  h: number;
+  c: number;
   l: number;
   v: number;
-  r: number;
   p: number;
   g: number;
-  a: number;
+  a: 0 | 1;
 }
 
 export interface SaveData {
-  v: 1;
+  v: 2;
   seed: number;
   size: number;
   time: { day: number; month: number; year: number; tod: number; total: number };
@@ -29,35 +61,28 @@ export interface SaveData {
   debt: number;
   taxes: Record<string, number>;
   funding: Record<string, number>;
-  roads: string;
-  zones: string;
-  stops: number[];
+  nodes: SavedNode[];
+  edges: SavedEdge[];
+  cells: SavedCell[];
+  stops: { x: number; z: number }[];
   buildings: SavedBuilding[];
   history: { net: number[]; pop: number[]; money: number[] };
 }
 
-const KEY = 'citysim3d.save.v1';
+const r1 = (n: number): number => Math.round(n * 10) / 10;
 
-const enc = (a: Uint8Array): string => {
-  let s = '';
-  for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode(...a.subarray(i, i + 8192));
-  return btoa(s);
-};
-const dec = (s: string, into: Uint8Array): void => {
-  const bin = atob(s);
-  for (let i = 0; i < bin.length && i < into.length; i++) into[i] = bin.charCodeAt(i);
-};
-
-/** Сохранение в localStorage. Формат — явный и не зависит от имён внутренних полей. */
+/** Сохранение в localStorage. Формат явный и не зависит от имён внутренних полей. */
 export class SaveSystem implements System {
   readonly id = 'save';
   readonly order = 90;
   private _game!: Game;
 
-  static peek(): SaveData | null {
+  /** Читает сохранение (null — нет или формат устарел). */
+  static peek(key: string): SaveData | null {
     try {
-      const raw = localStorage.getItem(KEY);
-      return raw ? (JSON.parse(raw) as SaveData) : null;
+      const raw = localStorage.getItem(key);
+      const d = raw ? (JSON.parse(raw) as SaveData) : null;
+      return d && d.v === 2 ? d : null;
     } catch {
       return null;
     }
@@ -67,17 +92,18 @@ export class SaveSystem implements System {
     this._game = game;
     let months = 0;
     game.bus.on('time:month', () => {
-      if (++months % 3 === 0) this.save(true);
+      if (++months % game.config.save.autosaveMonths === 0) this.save(true);
     });
   }
 
-  save(silent = false): boolean {
+  serialize(): SaveData {
     const g = this._game;
     const w = g.world;
     const t = g.get('time');
     const e = g.get('economy');
-    const data: SaveData = {
-      v: 1,
+    const zoneId = (idx: number): string => (idx ? g.zoneTypes.at(idx - 1).id : '');
+    return {
+      v: 2,
       seed: w.seed,
       size: w.size,
       time: { day: t.day, month: t.month, year: t.year, tod: t.tod, total: t.totalDays },
@@ -85,29 +111,23 @@ export class SaveSystem implements System {
       debt: e.debt,
       taxes: { ...e.taxes },
       funding: { ...e.funding },
-      roads: enc(w.road),
-      zones: enc(w.zone),
-      stops: g.get('transit').stops.slice(),
-      buildings: w.list().map((b) => ({
-        k: b.kind,
-        d: b.defId,
-        x: b.x,
-        y: b.y,
-        l: b.level,
-        v: b.variant,
-        r: b.rot,
-        p: Math.round(b.pop),
-        g: b.goods,
-        a: b.abandoned ? 1 : 0,
-      })),
+      nodes: [...w.graph.nodes.values()].map((n) => ({ id: n.id, x: r1(n.x), z: r1(n.z) })),
+      edges: [...w.graph.edges.values()].map((ed) => ({ id: ed.id, a: ed.a, b: ed.b, t: g.roadTypes.at(ed.type).id, br: ed.bridge ? 1 : 0, p: ed.pts.flatMap((p) => [r1(p.x), r1(p.z)]) })),
+      cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone) })),
+      stops: w.stops.map((s) => ({ x: r1(s.x), z: r1(s.z) })),
+      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0 })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
     };
+  }
+
+  save(silent = false): boolean {
+    const g = this._game;
     try {
-      localStorage.setItem(KEY, JSON.stringify(data));
-      if (!silent) g.message('Игра сохранена', 'good');
+      localStorage.setItem(g.config.save.key, JSON.stringify(this.serialize()));
+      if (!silent) g.message('msg.saved', undefined, 'good');
       return true;
     } catch {
-      g.message('Не удалось сохранить игру', 'bad');
+      g.message('msg.saveFailed', undefined, 'bad');
       return false;
     }
   }
@@ -115,18 +135,25 @@ export class SaveSystem implements System {
   /** Применяет сохранение к свежесозданной игре (до game.start()). */
   static apply(g: Game, d: SaveData): void {
     const w = g.world;
-    dec(d.roads, w.road);
-    dec(d.zones, w.zone);
-    for (const c of d.stops) w.stop[c] = 1;
+    for (const n of d.nodes) w.graph.restoreNode(n.id, n.x, n.z);
+    for (const e of d.edges) {
+      const type = g.roadTypes.get(e.t);
+      if (!type) continue;
+      const pts = [];
+      for (let i = 0; i < e.p.length; i += 2) pts.push({ x: e.p[i], z: e.p[i + 1] });
+      w.graph.addEdge(e.a, e.b, pts, { type: type.index, hw: type.width / 2, access: type.access, bridge: !!e.br }, e.id);
+    }
+    for (const c of d.cells) {
+      const zone = c.zone ? (g.zoneTypes.get(c.zone)?.index ?? -1) + 1 : 0;
+      w.zones.add({ x: c.x, z: c.z, rot: c.r, tx: c.tx, tz: c.tz, nx: c.nx, nz: c.nz, row: c.row, zone, building: 0, edge: 0, s: 0 }, c.id);
+    }
+    for (const s of d.stops) w.stops.push({ id: w.newId(), edge: 0, s: 0, x: s.x, z: s.z });
     for (const s of d.buildings) {
-      const def = s.k === 'zone' ? null : g.services.get(s.d);
-      const bw = def ? def.size[0] : 1;
-      const bh = def ? def.size[1] : 1;
-      if (s.k === 'zone' ? !g.zoneTypes.has(s.d) : !def) continue;
-      const b = g.builder.createBuilding(s.k, s.d, s.x, s.y, bw, bh);
+      if (s.k === 'zone' ? !g.zoneTypes.has(s.d) : !g.services.has(s.d)) continue;
+      const b = g.builder.createBuilding(s.k, s.d, s.x, s.z, s.r, s.w, s.h, s.c);
+      b.id = s.id;
       b.level = s.l;
       b.variant = s.v;
-      b.rot = s.r;
       g.builder.applyStats(b);
       b.pop = Math.min(s.p, b.cap);
       b.goods = s.g;
@@ -141,6 +168,6 @@ export class SaveSystem implements System {
     Object.assign(e.taxes, d.taxes);
     Object.assign(e.funding, d.funding);
     e.history = d.history;
-    g.get('transit').stops = d.stops.slice();
+    g.builder.refreshAccess();
   }
 }

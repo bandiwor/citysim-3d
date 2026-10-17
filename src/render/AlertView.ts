@@ -1,9 +1,7 @@
 import { CanvasTexture, Sprite, SpriteMaterial, SRGBColorSpace, type Scene } from 'three';
 import type { Game } from '../core/Game';
-import { CELL } from '../world/World';
 import type { View } from './View';
 
-const MAX = 70;
 
 function icon(emoji: string): SpriteMaterial {
   const c = document.createElement('canvas');
@@ -39,11 +37,11 @@ export class AlertView implements View {
     this._timer = 0;
     let k = 0;
     for (const b of this._game.world.list()) {
-      if (k >= MAX) break;
+      if (k >= this._game.config.render.alertLimit) break;
       let kind: string | null = null;
       if (b.fire > 0) kind = 'fire';
       else if (!b.abandoned) {
-        if (b.access < 0 && (b.kind === 'zone' || b.powerNeed > 0)) kind = 'road';
+        if (!b.access && (b.kind === 'zone' || b.powerNeed > 0)) kind = 'road';
         else if (!b.powered) kind = 'power';
         else if (!b.watered) kind = 'water';
       }
@@ -59,7 +57,7 @@ export class AlertView implements View {
       s.visible = true;
       s.scale.setScalar(0.04);
       s.userData.baseY = 14 + b.level * 3;
-      s.position.set((b.x + b.w / 2) * CELL, s.userData.baseY, (b.y + b.h / 2) * CELL);
+      s.position.set(b.x, s.userData.baseY, b.z);
       k++;
     }
     for (let i = k; i < this._sprites.length; i++) this._sprites[i].visible = false;

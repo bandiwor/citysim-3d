@@ -18,8 +18,10 @@ export class DisasterSystem implements System {
 
   init(game: Game): void {
     this._game = game;
+    this.enabled = game.config.disasters.enabled;
     game.bus.on('time:month', () => {
-      if (this.enabled && game.world.buildings.size > 14 && Math.random() < 0.22) this.ignite();
+      const c = game.config.disasters;
+      if (this.enabled && game.world.buildings.size > c.minBuildings && Math.random() < c.firePerMonth) this.ignite();
     });
   }
 
@@ -29,34 +31,35 @@ export class DisasterSystem implements System {
     if (!b) return;
     b.fire = 0.001;
     this._game.bus.emit('building:updated', b);
-    this._game.message('Пожар в городе!', 'bad');
+    this._game.message('msg.fire', undefined, 'bad');
+    this._game.sfx('alarm');
   }
 
   update(dt: number): void {
     if (dt <= 0) return;
+    const g = this._game;
+    const c = g.config.disasters;
     this._acc += dt;
-    if (this._acc < 0.5) return;
+    if (this._acc < c.interval) return;
     const step = this._acc;
     this._acc = 0;
-    const g = this._game;
-    const fireCov = g.get('maps').coverage('fire');
-    const burning = g.world.list().filter((b) => b.fire > 0);
-    for (const b of burning) {
-      const cov = fireCov[b.cell];
-      if (Math.random() < (0.04 + cov * 0.7) * step) {
+    const maps = g.get('maps');
+    for (const b of g.world.list().filter((x) => x.fire > 0)) {
+      const cov = maps.sample('fire', b.x, b.z);
+      if (Math.random() < (c.extinguishBase + cov * c.extinguishCoverage) * step) {
         b.fire = 0;
         g.bus.emit('building:updated', b);
-        g.message('Пожар потушен', 'good');
+        g.message('msg.fireOut', undefined, 'good');
         continue;
       }
       b.fire += step;
-      if (cov < 0.35 && Math.random() < 0.05 * step) {
-        const nb = g.world.buildingAt(b.x + (Math.random() < 0.5 ? -1 : 1), b.y + (Math.random() < 0.5 ? -1 : 1));
-        if (nb && nb.kind === 'zone' && !nb.fire) this.ignite(nb);
+      if (cov < c.spreadCoverage && Math.random() < c.spreadChance * step) {
+        const near = g.world.buildingsNear(b.x, b.z, c.spreadDistance).filter((n) => n.id !== b.id && n.kind === 'zone' && !n.fire);
+        if (near.length) this.ignite(near[Math.floor(Math.random() * near.length)]);
       }
-      if (b.fire > 16) {
+      if (b.fire > c.burnTime) {
         g.builder.removeBuilding(b);
-        g.message('Здание сгорело дотла', 'bad');
+        g.message('msg.burned', undefined, 'bad');
       }
     }
   }
