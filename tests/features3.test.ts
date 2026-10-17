@@ -297,3 +297,110 @@ describe('люди', () => {
     expect(old.speed).toBeLessThan(1);
   });
 });
+
+describe('движение машин', () => {
+  async function crossing(light: boolean) {
+    const g = createGame({ size: 80, config: { traffic: { maxVehicles: 80, maxAge: 400 } } });
+    road(g, 40, 200, 360, 200);
+    road(g, 200, 40, 200, 360);
+    await settle(g);
+    if (light) g.builder.setTrafficLight(200, 200, true);
+    await settle(g);
+    return g;
+  }
+
+  async function stress(g: Awaited<ReturnType<typeof crossing>>, seconds: number): Promise<{ minDist: number; arrived: number }> {
+    const tr = g.get('traffic');
+    const net = g.get('network');
+    const edges = [...g.world.graph.edges.values()];
+    let arrived = 0;
+    let minDist = Infinity;
+    for (let t = 0; t < seconds; t += 0.1) {
+      // каждую секунду пускаем машины со случайных краёв в случайные другие
+      if (Math.abs(t - Math.round(t)) < 0.05) {
+        for (let k = 0; k < 3; k++) {
+          const a = edges[Math.floor(Math.random() * edges.length)];
+          const b = edges[Math.floor(Math.random() * edges.length)];
+          if (a === b) continue;
+          void net.requestPath(a.id, a.len / 2, b.id, b.len / 2).then((steps) => {
+            const v = tr.spawn(steps, a.len / 2, b.len / 2, 'car');
+            if (v) v.onArrive = () => (arrived++, false);
+          });
+        }
+      }
+      g.step(0.1);
+      await Promise.resolve();
+      await Promise.resolve();
+      const vs = tr.vehicles;
+      for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
+        if (vs[i].wait > 0 || vs[j].wait > 0) continue;
+        minDist = Math.min(minDist, Math.hypot(vs[i].x - vs[j].x, vs[i].z - vs[j].z));
+      }
+    }
+    return { minDist, arrived };
+  }
+
+  it('на перекрёстке без светофора машины не проезжают сквозь друг друга', async () => {
+    const g = await crossing(false);
+    const r = await stress(g, 120);
+    expect(r.arrived).toBeGreaterThan(10);
+    expect(r.minDist).toBeGreaterThan(1.7);
+  });
+
+  it('на перекрёстке со светофором тоже', async () => {
+    const g = await crossing(true);
+    const r = await stress(g, 120);
+    expect(r.arrived).toBeGreaterThan(10);
+    expect(r.minDist).toBeGreaterThan(1.7);
+  });
+
+  it('на повороте курс меняется плавно, без рывков', async () => {
+    const g = await crossing(false);
+    const tr = g.get('traffic');
+    const net = g.get('network');
+    const edges = [...g.world.graph.edges.values()];
+    const a = edges.find((e) => Math.abs(e.pts[0].x - e.pts[e.pts.length - 1].x) > 30)!;
+    const b = edges.find((e) => Math.abs(e.pts[0].z - e.pts[e.pts.length - 1].z) > 30)!;
+    const steps = (await net.requestPath(a.id, 2, b.id, b.len - 2))!;
+    const v = tr.spawn(steps, 2, b.len - 2, 'car')!;
+    let prevYaw = v.yaw;
+    let prevX = v.x;
+    let prevZ = v.z;
+    let maxTurn = 0;
+    let maxJump = 0;
+    for (let i = 0; i < 400 && !v.dead; i++) {
+      g.step(0.05);
+      let d = v.yaw - prevYaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      maxTurn = Math.max(maxTurn, Math.abs(d));
+      maxJump = Math.max(maxJump, Math.hypot(v.x - prevX, v.z - prevZ));
+      prevYaw = v.yaw;
+      prevX = v.x;
+      prevZ = v.z;
+    }
+    expect(maxJump).toBeLessThan(2.5);
+    expect(maxTurn).toBeLessThan(0.5);
+  });
+});
+
+describe('вывоз мусора', () => {
+  it('мусоровозы забирают мусор у целых улиц за заезд: свалка заполняется, переполнения нет', async () => {
+    const g = await city();
+    place(g, 'landfill', 140, 135);
+    await settle(g);
+    await run(g, 40);
+    const homes = g.world.list().filter((b) => b.kind === 'zone');
+    expect(homes.length).toBeGreaterThan(5);
+    for (const b of homes) {
+      b.pop = b.cap;
+      b.garbage = 30;
+    }
+    const before = homes.reduce((s, b) => s + b.garbage, 0);
+    await run(g, 150);
+    const landfill = g.world.list().find((b) => b.defId === 'landfill')!;
+    expect(landfill.stored).toBeGreaterThan(before * 0.5);
+    expect(homes.reduce((s, b) => s + b.garbage, 0)).toBeLessThan(before * 0.4);
+    expect(g.get('sanitation').overflowing).toBe(0);
+  }, 30000);
+});

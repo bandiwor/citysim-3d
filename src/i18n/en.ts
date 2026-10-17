@@ -476,6 +476,7 @@ export const en = {
   'service.recycling.name': 'Recycling centre',
   'service.recycling.desc': 'Processes garbage without pollution.',
 
+  'msg.loadFailed': 'The save could not be loaded — a new city was started.',
   'help.html': `
     <h4>How to play</h4>
     <ol>

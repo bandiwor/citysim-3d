@@ -445,13 +445,16 @@ describe('TrafficSystem', () => {
     const traffic = g.get('traffic');
     const e = edges[0];
     const steps = (await net.requestPath(e.id, 1, e.id, e.len - 1))!;
-    const vs = Array.from({ length: 30 }, () => traffic.spawn(steps, 1, e.len - 1, 'car')!);
+    const vs = [traffic.spawn(steps, 1, e.len - 1, 'car')!];
+    // перегруз ребра задаём напрямую: на одной полосе машины физически не накладываются
+    traffic.occupancy.set(e.id, 60);
     expect(traffic.load(e.id)).toBeGreaterThan(1);
     const x = vs[0].s;
     await run(g, 0.5);
     const crawl = vs[0].s - x;
+    traffic.kill(vs[0]);
+    traffic.occupancy.delete(e.id);
     const solo = traffic.spawn(steps, 1, e.len - 1, 'car')!;
-    for (const v of vs) traffic.kill(v);
     const y = solo.s;
     await run(g, 0.5);
     expect(solo.s - y).toBeGreaterThan(crawl);
@@ -480,8 +483,8 @@ describe('TrafficSystem', () => {
     const steps = (await g.get('network').requestPath(e.id, 1, e.id, e.len - 1))!;
     const t = g.get('traffic');
     expect(t.spawn(steps, 1, 10, 'car')).not.toBeNull();
-    expect(t.spawn(steps, 1, 10, 'car')).not.toBeNull();
-    expect(t.spawn(steps, 1, 10, 'car')).toBeNull();
+    expect(t.spawn(steps, 14, 20, 'car')).not.toBeNull();
+    expect(t.spawn(steps, 28, 30, 'car')).toBeNull();
   });
 });
 

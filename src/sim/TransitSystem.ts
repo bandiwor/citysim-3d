@@ -105,6 +105,7 @@ export class TransitSystem implements System {
     if (rid >= this._nextRoute) this._nextRoute = rid + 1;
     const r: TransitRoute = { id: rid, color: colors[(rid - 1) % colors.length], stops: [], buses: 2, legs: [], status: 'short', carried: 0, fleet: [], polyline: [], rev: 0 };
     this.routes.push(r);
+    this._dirty = true;
     this._changed();
     return r;
   }

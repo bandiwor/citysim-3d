@@ -102,15 +102,22 @@ export class SanitationSystem implements System {
       let carried = 0;
       const ok = fleet.launch(f, target, 0xffffff, {
         onArrive: () => {
-          carried = Math.min(target.garbage, gc.truckLoad);
-          target.garbage -= carried;
+          // мусоровоз опорожняет баки не только у цели, но и у соседей по улице, пока не заполнится кузов
+          const near = g.world.buildingsNear(target.x, target.z, gc.sweepRadius).filter((b) => b.garbage > 1).sort((a, b) => (a === target ? -1 : b === target ? 1 : b.garbage - a.garbage));
+          for (const b of near) {
+            if (carried >= gc.truckLoad) break;
+            const take = Math.min(b.garbage, gc.truckLoad - carried);
+            b.garbage -= take;
+            carried += take;
+          }
         },
         onReturn: () => {
           f.stored = Math.min(effectiveDef(g.services.require(f.defId), f.up).waste!.capacity, f.stored + carried);
           this._targeted.delete(target.id);
         },
         onFail: () => {
-          target.garbage += carried;
+          // машину потеряли в пути: мусор остаётся у цели
+          target.garbage = Math.min(gc.cap * 1.25, target.garbage + carried);
           this._targeted.delete(target.id);
         },
       });

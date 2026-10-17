@@ -1,6 +1,6 @@
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, MeshLambertMaterial, type Scene } from 'three';
 import type { Game } from '../core/Game';
-import type { RoadEdge } from '../world/RoadGraph';
+import type { RoadEdge, RoadGraph, RoadNode } from '../world/RoadGraph';
 import { pointAtLength, type Vec2 } from '../world/geometry';
 import type { View } from './View';
 
@@ -115,6 +115,96 @@ function offsetLine(pts: Vec2[], offset: number): Vec2[] {
   return out;
 }
 
+
+interface Arm {
+  e: RoadEdge;
+  /** единичный вектор от узла вдоль ребра */
+  tx: number;
+  tz: number;
+  /** левая нормаль (поворот на +90°) */
+  nx: number;
+  nz: number;
+  hw: number;
+  inner: number;
+  /** на каком расстоянии от узла ребро обрезается под перекрёсток */
+  cut: number;
+  /** ребро начинается в этом узле */
+  atStart: boolean;
+}
+
+interface Corner {
+  /** внутренняя (кромка асфальта) и внешняя (край тротуара) точки, смещения от узла */
+  ix: number;
+  iz: number;
+  ox: number;
+  oz: number;
+}
+
+interface JunctionGeo {
+  arms: Arm[];
+  /** угол между лучом k и k+1 (против часовой); null — лучи не сходятся острым углом */
+  corners: (Corner | null)[];
+}
+
+/** Пересечение боковых линий соседних лучей: (a, b) — расстояния вдоль лучей i и j от узла. */
+function cornerOf(i: Arm, j: Arm, offI: number, offJ: number): { a: number; b: number } | null {
+  const cross = i.tx * j.tz - i.tz * j.tx;
+  // почти противоположные лучи: боковые линии параллельны, угла нет
+  if (Math.abs(cross) < 0.08) return null;
+  const rx = -offJ * j.nx - offI * i.nx;
+  const rz = -offJ * j.nz - offI * i.nz;
+  const det = -cross;
+  return { a: (-rx * j.tz + j.tx * rz) / det, b: (i.tx * rz - i.tz * rx) / det };
+}
+
+/** Строит «звезду» перекрытия: обрезка лучей и угловые точки, чтобы между дорогами не оставалось щелей. */
+function type3(g: Game, e: RoadEdge): number {
+  const t = g.roadTypes.at(e.type);
+  return t.median === 'barrier' ? 0x9a9c9f : e.bridge ? 0xa7abb0 : SIDEWALK;
+}
+
+function junctionGeo(graph: RoadGraph, n: RoadNode, innerOf: (e: RoadEdge) => number): JunctionGeo | null {
+  const edges = n.edges.map((id) => graph.edges.get(id)).filter((e): e is RoadEdge => !!e);
+  const arms: Arm[] = edges.map((e) => {
+    const atStart = e.a === n.id;
+    const q = pointAtLength(e.pts, e.cum, atStart ? 0 : e.len);
+    const k = atStart ? 1 : -1;
+    return { e, tx: q.tx * k, tz: q.tz * k, nx: -q.tz * k, nz: q.tx * k, hw: e.hw, inner: innerOf(e), cut: e.hw * 1.15, atStart };
+  });
+  if (arms.length < 2) return null;
+  arms.sort((p, q) => Math.atan2(p.tz, p.tx) - Math.atan2(q.tz, q.tx));
+  if (arms.length === 2 && -(arms[0].tx * arms[1].tx + arms[0].tz * arms[1].tz) > 0.985) return null;
+  const maxA = Math.max(...arms.map((a) => a.hw)) * 4;
+  const m = arms.length;
+  const pairs: ({ a: number; b: number } | null)[] = [];
+  for (let k = 0; k < m; k++) {
+    const i = arms[k];
+    const j = arms[(k + 1) % m];
+    const c = cornerOf(i, j, i.hw, j.hw);
+    const ok = c && Math.abs(c.a) < maxA && Math.abs(c.b) < maxA ? c : null;
+    pairs.push(ok);
+    if (ok) {
+      if (ok.a > 0) i.cut = Math.max(i.cut, ok.a + 0.3);
+      if (ok.b > 0) j.cut = Math.max(j.cut, ok.b + 0.3);
+    }
+  }
+  for (const a of arms) a.cut = Math.min(a.cut, a.e.len * 0.45);
+  const corners = pairs.map((ok, k): Corner | null => {
+    if (!ok) return null;
+    const i = arms[k];
+    const j = arms[(k + 1) % m];
+    const ci = cornerOf(i, j, i.inner, j.inner);
+    if (!ci) return null;
+    return {
+      ox: ok.a * i.tx + i.hw * i.nx,
+      oz: ok.a * i.tz + i.hw * i.nz,
+      ix: ci.a * i.tx + i.inner * i.nx,
+      iz: ci.a * i.tz + i.inner * i.nz,
+    };
+  });
+  return { arms, corners };
+}
+
 /** Дороги по графу: лента асфальта, тротуары, разметка, перекрёстки, мосты и остановки одной пересобираемой геометрией. */
 export class RoadView implements View {
   private _mesh: Mesh;
@@ -144,6 +234,17 @@ export class RoadView implements View {
     const p = new Poly();
     const waterY = (e: RoadEdge): number => (e.bridge ? BRIDGE_LIFT : 0);
 
+    // перекрёстки: обрезка лучей и угловые точки (до рисования самих дорог)
+    const innerOf = (e: RoadEdge): number => e.hw - g.roadTypes.at(e.type).sidewalk;
+    const cuts = new Map<string, number>();
+    const geos = new Map<number, JunctionGeo>();
+    for (const n of graph.nodes.values()) {
+      const geo = n.edges.length >= 2 ? junctionGeo(graph, n, innerOf) : null;
+      if (!geo) continue;
+      geos.set(n.id, geo);
+      for (const a of geo.arms) cuts.set(`${a.e.id}:${a.atStart ? 'a' : 'b'}`, a.cut);
+    }
+
     for (const e of graph.edges.values()) {
       const type = g.roadTypes.at(e.type);
       const hw = e.hw;
@@ -152,9 +253,8 @@ export class RoadView implements View {
       const y = ROAD_Y + lift;
       const degA = graph.nodes.get(e.a)!.edges.length;
       const degB = graph.nodes.get(e.b)!.edges.length;
-      const trim = hw * 1.15;
-      const s0 = degA >= 3 ? trim : 0;
-      const s1 = e.len - (degB >= 3 ? trim : 0);
+      const s0 = cuts.get(`${e.id}:a`) ?? 0;
+      const s1 = e.len - (cuts.get(`${e.id}:b`) ?? 0);
       if (s1 - s0 < 1) continue;
       const line = sub(e, s0, s1);
       const inner = hw - sw;
@@ -259,22 +359,58 @@ export class RoadView implements View {
       }
     }
 
-    // перекрёстки и изломы
-    for (const n of graph.nodes.values()) {
-      const edges = n.edges.map((id) => graph.edges.get(id)!);
-      const hwMax = Math.max(...edges.map((e) => e.hw));
-      const color = g.roadTypes.at(edges[0].type).color;
-      const y = ROAD_Y + (edges.some((e) => e.bridge) ? BRIDGE_LIFT : 0);
-      if (edges.length >= 3) p.disc(n.x, n.z, hwMax * 1.2, y + 0.003, color);
-      else if (edges.length === 2) {
-        const dirs = edges.map((e) => {
-          const at = e.a === n.id ? 0 : e.len;
-          const q = pointAtLength(e.pts, e.cum, at);
-          return { x: q.tx * (e.a === n.id ? 1 : -1), z: q.tz * (e.a === n.id ? 1 : -1) };
-        });
-        const dot = -(dirs[0].x * dirs[1].x + dirs[0].z * dirs[1].z);
-        if (dot < 0.995) p.disc(n.x, n.z, hwMax - 0.9, y + 0.003, color);
+    // перекрёстки и изломы: асфальт веером от центра + тротуарные уголки в промежутках между лучами
+    for (const [id, geo] of geos) {
+      const n = graph.nodes.get(id)!;
+      const edges = geo.arms.map((a) => a.e);
+      const color = g.roadTypes.at(edges.reduce((best, e) => (e.hw > best.hw ? e : best), edges[0]).type).color;
+      const lift = edges.some((e) => e.bridge) ? BRIDGE_LIFT : 0;
+      const y = ROAD_Y + lift;
+      const top = edges.some((e) => e.bridge) ? y + 0.85 : y + CURB;
+      const m = geo.arms.length;
+      // контур асфальта: для каждого луча — две точки на линии обрезки, затем угол к следующему лучу
+      const ring: Vec2[] = [];
+      geo.arms.forEach((a, k) => {
+        ring.push({ x: a.cut * a.tx - a.inner * a.nx, z: a.cut * a.tz - a.inner * a.nz });
+        ring.push({ x: a.cut * a.tx + a.inner * a.nx, z: a.cut * a.tz + a.inner * a.nz });
+        const c = geo.corners[k];
+        if (c) ring.push({ x: c.ix, z: c.iz });
+      });
+      for (let k = 0; k < ring.length; k++) {
+        const a = ring[k];
+        const b = ring[(k + 1) % ring.length];
+        // порядок вершин против часовой стрелки сверху (нормаль вверх)
+        p.quad([n.x, y + 0.003, n.z], [n.x + b.x, y + 0.003, n.z + b.z], [n.x + b.x, y + 0.003, n.z + b.z], [n.x + a.x, y + 0.003, n.z + a.z], [0, 1, 0], color);
       }
+      // тротуарные уголки
+      geo.arms.forEach((a, k) => {
+        const c = geo.corners[k];
+        const b = geo.arms[(k + 1) % m];
+        if (a.hw - a.inner <= 0 || b.hw - b.inner <= 0) return;
+        const sw = type3(g, a.e);
+        if (!c) {
+          // почти противоположные лучи (сквозная дорога у примыкания): сплошной тротуар между ними
+          if (a.tx * b.tx + a.tz * b.tz < -0.9) {
+            const A = { x: n.x + a.cut * a.tx + a.inner * a.nx, z: n.z + a.cut * a.tz + a.inner * a.nz };
+            const Ao = { x: n.x + a.cut * a.tx + a.hw * a.nx, z: n.z + a.cut * a.tz + a.hw * a.nz };
+            const B = { x: n.x + b.cut * b.tx - b.inner * b.nx, z: n.z + b.cut * b.tz - b.inner * b.nz };
+            const Bo = { x: n.x + b.cut * b.tx - b.hw * b.nx, z: n.z + b.cut * b.tz - b.hw * b.nz };
+            p.quad([A.x, top, A.z], [B.x, top, B.z], [Bo.x, top, Bo.z], [Ao.x, top, Ao.z], [0, 1, 0], sw);
+            p.wall([A, B], y, top, -1, sw);
+          }
+          return;
+        }
+        const A = { x: n.x + a.cut * a.tx + a.inner * a.nx, z: n.z + a.cut * a.tz + a.inner * a.nz };
+        const Ao = { x: n.x + a.cut * a.tx + a.hw * a.nx, z: n.z + a.cut * a.tz + a.hw * a.nz };
+        const B = { x: n.x + b.cut * b.tx - b.inner * b.nx, z: n.z + b.cut * b.tz - b.inner * b.nz };
+        const Bo = { x: n.x + b.cut * b.tx - b.hw * b.nx, z: n.z + b.cut * b.tz - b.hw * b.nz };
+        const Ci = { x: n.x + c.ix, z: n.z + c.iz };
+        const Co = { x: n.x + c.ox, z: n.z + c.oz };
+        p.quad([A.x, top, A.z], [Ci.x, top, Ci.z], [Co.x, top, Co.z], [Ao.x, top, Ao.z], [0, 1, 0], sw);
+        p.quad([Ci.x, top, Ci.z], [B.x, top, B.z], [Bo.x, top, Bo.z], [Co.x, top, Co.z], [0, 1, 0], sw);
+        p.wall([A, Ci, B], y, top, -1, sw);
+      });
+      void n;
     }
 
     // остановки

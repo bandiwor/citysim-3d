@@ -85,13 +85,21 @@ export const defaultConfig = {
     /** период светофора, с, и длительность жёлтого */
     lightCycle: 14,
     lightYellow: 2,
-    /** за сколько ед. до узла машины останавливаются на красный */
-    lightStop: 3,
+    /** на сколько ед. дальше границы перекрёстка стоп-линия на красный */
+    lightStop: 0.5,
     /** расстояние между стоящими в очереди машинами */
     queueGap: 5.5,
     lightCost: 150,
     /** радиус перекрёстка без светофора, где машины мешают друг другу, и штраф к скорости при заторе */
     junctionRadius: 9,
+    /** запас к радиусу перекрёстка и дальность резервирования проезда, ед. */
+    junctionMargin: 3,
+    junctionReserve: 10,
+    /** сколько секунд ждать своей очереди, прежде чем въехать (против взаимной блокировки), и когда ждущий начинает блокировать новых */
+    junctionPatience: 14,
+    junctionStarve: 3,
+    /** радиус плавного поворота, ед. */
+    turnRadius: 9,
     junctionBusy: 3,
     junctionPenalty: 0.55,
   },
@@ -208,13 +216,15 @@ export const defaultConfig = {
   },
   garbage: {
     /** мусор в секунду на жителя / рабочее место */
-    perResident: 0.004,
-    perJob: 0.006,
+    perResident: 0.0016,
+    perJob: 0.0024,
     /** вызывать мусоровоз при таком количестве мусора */
-    dispatchAt: 14,
+    dispatchAt: 16,
     /** предел накопления (дальше — свалка во дворе) */
     cap: 60,
-    truckLoad: 40,
+    truckLoad: 110,
+    /** радиус, в котором мусоровоз за один заезд забирает мусор у соседних зданий, ед. */
+    sweepRadius: 34,
     interval: 2,
     /** при мусоре выше этой доли предела падает счастье */
     unhappyAt: 0.6,
@@ -235,9 +245,11 @@ export const defaultConfig = {
   crime: {
     interval: 1,
     /** вероятность ограбления в секунду на здание при нулевом покрытии полицией и безработице 0 */
-    baseRate: 0.00035,
+    baseRate: 0.00007,
+    /** доля вероятности у самого участка полиции (растёт до 1 на границе радиуса) */
+    stationDeterrence: 0.2,
     unemploymentBoost: 2.5,
-    policeEffect: 0.85,
+    policeEffect: 0.9,
     /** добыча за рабочее место / жителя */
     lootPerJob: 2.5,
     lootPerResident: 0.8,
@@ -245,7 +257,7 @@ export const defaultConfig = {
     fine: 120,
     /** через сколько секунд преступник скрывается, если полиция не приехала */
     timeout: 24,
-    maxActive: 6,
+    maxActive: 3,
     unhappy: -0.1,
   },
   pedestrians: {
@@ -267,9 +279,14 @@ export const defaultConfig = {
     fov: 70,
   },
   traffic: {
-    maxVehicles: 420,
+    maxVehicles: 160,
+    /** машин на жителя (верхняя граница числа легковых при данном населении) */
+    carsPerPop: 0.07,
+    /** длина машин по видам и зазор между ними, ед. */
+    length: { car: 3.6, truck: 5.4, bus: 7.2, police: 3.8, garbage: 5.4, hearse: 4.4 } as Record<string, number>,
+    gap: 1.8,
     busExtra: 40,
-    tripsPerPop: 0.0045,
+    tripsPerPop: 0.0016,
     rushBase: 0.5,
     rushAmp: 0.9,
     rushMorning: 0.33,

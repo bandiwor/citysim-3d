@@ -1,3 +1,5 @@
+import { CELL } from '../config/constants';
+import { effectiveDef } from '../data/services';
 import { t } from '../i18n';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
@@ -50,7 +52,13 @@ export class CrimeSystem implements System {
     const activity = housing ? Math.min(1, b.pop / 10) : Math.min(1, b.workers / 8);
     const police = g.get('maps').sample('police', b.x, b.z);
     const unemployment = g.get('stats').unemployment;
-    return c.baseRate * activity * (1 + unemployment * c.unemploymentBoost) * (1 - police * c.policeEffect);
+    // сам участок отпугивает: в его радиусе вероятность падает до 25% у стен и растёт к границе
+    let deter = 1;
+    for (const st of this._stations) {
+      const d = Math.hypot(b.x - st.x, b.z - st.z) / st.r;
+      if (d < 1) deter = Math.min(deter, c.stationDeterrence + (1 - c.stationDeterrence) * d * d);
+    }
+    return c.baseRate * activity * deter * (1 + unemployment * c.unemploymentBoost) * (1 - police * c.policeEffect);
   }
 
   /** Начать ограбление в здании (вызывается случайно или вручную в тестах). */
@@ -84,9 +92,24 @@ export class CrimeSystem implements System {
     return t(b.kind === 'zone' ? `zone.${b.zone}.name` : `service.${b.defId}.name`);
   }
 
+  private _stations: { x: number; z: number; r: number }[] = [];
+
+  /** Работающие отделения полиции с учётом улучшений. */
+  private _refreshStations(): void {
+    const g = this._game;
+    this._stations = [];
+    for (const b of g.world.list()) {
+      if (b.kind !== 'service' || b.abandoned) continue;
+      const d = effectiveDef(g.services.require(b.defId), b.up);
+      if (d.coverage?.type !== 'police' || !(b.powered || d.powerNeed === 0)) continue;
+      this._stations.push({ x: b.x, z: b.z, r: d.coverage.radius * CELL });
+    }
+  }
+
   private _tick(dt: number): void {
     const g = this._game;
     const c = g.config.crime;
+    this._refreshStations();
     for (const b of g.world.list()) {
       if (b.incident > 0) {
         b.incident -= dt;

@@ -478,6 +478,7 @@ export const ru: Record<keyof typeof en, string> = {
   'service.recycling.name': 'Центр переработки',
   'service.recycling.desc': 'Перерабатывает мусор без загрязнения.',
 
+  'msg.loadFailed': 'Не удалось загрузить сохранение — начат новый город.',
   'help.html': `
     <h4>Как играть</h4>
     <ol>

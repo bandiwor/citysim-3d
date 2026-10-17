@@ -87,6 +87,9 @@ export interface SaveData {
   terrain?: [number, number][];
 }
 
+/** Маршруты из сохранения, ожидающие запуска игры. */
+const pendingRoutes = new WeakMap<Game, SavedRoute[]>();
+
 const r1 = (n: number): number => Math.round(n * 10) / 10;
 
 /** Сохранение в localStorage. Формат явный и не зависит от имён внутренних полей. */
@@ -103,6 +106,21 @@ export class SaveSystem implements System {
       return d && d.v === 2 ? d : null;
     } catch {
       return null;
+    }
+  }
+
+  update(): void {
+    const routes = pendingRoutes.get(this._game);
+    if (!routes) return;
+    pendingRoutes.delete(this._game);
+    const g = this._game;
+    const tr = g.get('transit');
+    for (const r of routes) {
+      const route = tr.createRoute(r.id);
+      route.color = r.color;
+      route.stops = r.stops.filter((id) => g.world.stops.some((s) => s.id === id));
+      route.buses = r.buses;
+      route.carried = r.carried;
     }
   }
 
@@ -177,14 +195,8 @@ export class SaveSystem implements System {
       w.bumpId(id);
       w.stops.push({ id, edge: 0, s: 0, x: s.x, z: s.z });
     }
-    const tr = g.get('transit');
-    for (const r of d.routes ?? []) {
-      const route = tr.createRoute(r.id);
-      route.color = r.color;
-      route.stops = r.stops.filter((id) => w.stops.some((s) => s.id === id));
-      route.buses = r.buses;
-      route.carried = r.carried;
-    }
+    // системы инициализируются в game.start(): маршруты восстанавливаются в первом кадре
+    pendingRoutes.set(g, d.routes ?? []);
     for (const s of d.buildings) {
       if (s.k === 'zone' ? !g.zoneTypes.has(s.d) : !g.services.has(s.d)) continue;
       const b = g.builder.createBuilding(s.k, s.d, s.x, s.z, s.r, s.w, s.h, s.c);

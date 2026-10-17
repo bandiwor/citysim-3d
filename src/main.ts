@@ -30,14 +30,25 @@ async function boot(): Promise<void> {
   // тяжёлые расчёты (рельеф, карты влияния, поиск пути) идут в Web Worker
   const compute: ComputeBackend = workersSupported() ? new WorkerCompute() : new InlineCompute();
   const terrain = await compute.generateTerrain(terrainParams(config, choice.seed));
-  const game = new Game({ seed: choice.seed, terrain, compute });
-
-  // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
-  game.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(disastersFeature);
-
+  const build = (): Game => {
+    const g = new Game({ seed: choice.seed, terrain, compute });
+    // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
+    g.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(disastersFeature);
+    return g;
+  };
+  let game = build();
   if (choice.load) {
     const data = SaveSystem.peek(game.config.save.key);
-    if (data) SaveSystem.apply(game, data);
+    if (data) {
+      try {
+        SaveSystem.apply(game, data);
+      } catch (err) {
+        // повреждённое/несовместимое сохранение не должно ломать запуск: начинаем новый город
+        console.error('Не удалось загрузить сохранение', err);
+        game = build();
+        game.message('msg.loadFailed', undefined, 'bad');
+      }
+    }
   }
   game.start();
   loading.remove();
