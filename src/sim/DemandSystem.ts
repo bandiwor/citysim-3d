@@ -51,7 +51,7 @@ export class DemandSystem implements System {
     const c = this._game.config.demand;
     for (const z of this._game.zoneTypes.all()) {
       const f = this.formulas.get(z.id);
-      const target = clamp(f ? f() : 0, -1, 1);
+      const target = clamp((f ? f() : 0) + this._game.get('mods').add(`demand${z.id[0].toUpperCase()}${z.id.slice(1)}`), -1, 1);
       const cur = this.values[z.id] ?? 0;
       this.values[z.id] = cur + (target - cur) * c.smoothing;
     }

@@ -31,7 +31,7 @@ async function boot(): Promise<void> {
   const compute: ComputeBackend = workersSupported() ? new WorkerCompute() : new InlineCompute();
   const terrain = await compute.generateTerrain(terrainParams(config, choice.seed));
   const build = (): Game => {
-    const g = new Game({ seed: choice.seed, terrain, compute });
+    const g = new Game({ seed: choice.seed, terrain, compute, config: { progress: { enabled: choice.mode === 'career' } } });
     // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
     g.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(disastersFeature);
     return g;

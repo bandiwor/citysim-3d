@@ -57,11 +57,11 @@ export class SanitationSystem implements System {
     for (const b of g.world.list()) {
       if (b.abandoned) continue;
       const housing = b.kind === 'zone' && g.zoneTypes.require(b.zone).housing;
-      const rate = housing ? b.pop * gc.perResident : (b.kind === 'zone' ? b.workers : b.jobs * 0.5) * gc.perJob;
+      const rate = (housing ? b.pop * gc.perResident : (b.kind === 'zone' ? b.workers : b.jobs * 0.5) * gc.perJob) * g.get('mods').mul('garbage');
       b.garbage = Math.min(gc.cap * 1.25, b.garbage + rate * dt);
       if (!housing || b.pop < 1) continue;
       const health = maps.sample('health', b.x, b.z);
-      const per = b.pop * dc.rate * (1 - health * dc.healthEffect) * (b.dead > 0 ? dc.unburiedBoost : 1);
+      const per = b.pop * dc.rate * (1 - health * dc.healthEffect) * (b.dead > 0 ? dc.unburiedBoost : 1) * g.get('mods').mul('death');
       const acc = (this._deathAcc.get(b.id) ?? 0) + per * dt;
       if (acc >= 1) {
         this._deathAcc.set(b.id, acc - 1);

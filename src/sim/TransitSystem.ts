@@ -211,7 +211,7 @@ export class TransitSystem implements System {
       const d = Math.hypot(s.x - x, s.z - z);
       if (d < r) cov += (1 - d / r) * q;
     }
-    return Math.min(c.shareMax, Math.min(1, cov) * c.shareFactor);
+    return Math.min(c.shareMax * 1.5, Math.min(c.shareMax, Math.min(1, cov) * c.shareFactor) * this._game.get('mods').mul('transitShare'));
   }
 
   upkeep(): number {
@@ -223,7 +223,7 @@ export class TransitSystem implements System {
   private _earn(n: number): void {
     this.riders += n;
     this.ridersMonth += n;
-    this._game.get('economy').earnTransit(n * this._game.config.economy.fare);
+    this._game.get('economy').earnTransit(n * this._game.config.economy.fare * this._game.get('mods').mul('fare'));
   }
 
   // ---------- внутренняя логика ----------

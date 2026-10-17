@@ -6,6 +6,8 @@ import { h } from './dom';
 export interface StartChoice {
   seed: number;
   load: boolean;
+  /** карьера — содержимое открывается ростом города; песочница — всё доступно */
+  mode: 'career' | 'sandbox';
 }
 
 /** Стартовый экран: язык, новая игра с seed либо продолжение. Первый клик разблокирует звук. */
@@ -31,9 +33,11 @@ export function showStartScreen(root: HTMLElement, saveKey: string, audio: Audio
           langs,
           h('h1', { text: t('app.title') }),
           h('p', { text: t('start.tagline') }),
-          save ? h('button', { class: 'btn big primary', text: `▶ ${t('start.continue', { year: save.time.year, pop: save.history.pop[save.history.pop.length - 1] ?? 0 })}`, onclick: () => done({ seed: save.seed, load: true }) }) : null,
+          save ? h('button', { class: 'btn big primary', text: `▶ ${t('start.continue', { year: save.time.year, pop: save.history.pop[save.history.pop.length - 1] ?? 0 })}`, onclick: () => done({ seed: save.seed, load: true, mode: save.mode ?? 'sandbox' }) }) : null,
           h('label', { class: 'seedrow' }, h('span', { text: t('start.seed') }), seedInput),
-          h('button', { class: 'btn big', text: `✨ ${t('start.new')}`, onclick: () => done({ seed: parseInt(seedInput.value, 10) || 1, load: false }) }),
+          h('button', { class: 'btn big', text: `✨ ${t('start.new')}`, title: t('start.careerHint'), onclick: () => done({ seed: parseInt(seedInput.value, 10) || 1, load: false, mode: 'career' }) }),
+          h('button', { class: 'btn big', text: `🏗️ ${t('start.sandbox')}`, title: t('start.sandboxHint'), onclick: () => done({ seed: parseInt(seedInput.value, 10) || 1, load: false, mode: 'sandbox' }) }),
+          h('p', { class: 'dim small', text: t('start.modes') }),
         ),
       );
     };

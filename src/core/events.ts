@@ -9,6 +9,16 @@ export interface GameEvents {
   'fp:enter': { x: number; z: number };
   'fp:exit': void;
   'routes:changed': void;
+  /** изменились модификаторы (политики, события) */
+  'mods:changed': void;
+  /** новое событие города ждёт решения игрока */
+  'event:show': void;
+  /** достигнут новый уровень города */
+  'progress:level': number;
+  /** открылось новое содержимое (панель инструментов обновляет замки) */
+  'tool:unlocked': void;
+  /** цели обновились */
+  'objectives:changed': void;
   'building:added': Building;
   'building:removed': Building;
   'building:updated': Building;

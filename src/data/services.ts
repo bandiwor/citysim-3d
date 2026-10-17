@@ -96,6 +96,9 @@ export const SERVICES: ServiceDef[] = [
   { id: 'plaza', index: 0, icon: '⛲', category: 'parks', size: [1, 1], cost: 700, upkeep: 10, jobs: 0, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 8, strength: 1 }, model: 'plaza' },
   { id: 'stadium', index: 0, icon: '🏟️', category: 'parks', size: [3, 3], cost: 16000, upkeep: 420, jobs: 20, powerNeed: 60, waterNeed: 10, fundingGroup: 'parks', needsRoad: true, coverage: { type: 'park', radius: 18, strength: 1 }, model: 'stadium' },
   { id: 'recycling', index: 0, icon: '♻️', category: 'garbage', size: [2, 2], cost: 6500, upkeep: 180, jobs: 14, powerNeed: 18, waterNeed: 4, fundingGroup: 'sanitation', needsRoad: true, waste: { capacity: 350, burn: 3 }, fleet: { kind: 'garbage', count: 2 }, model: 'recycling' },
+  // Городские символы
+  { id: 'townhall', index: 0, icon: '🏛️', category: 'civic', size: [2, 2], cost: 12000, upkeep: 220, jobs: 25, powerNeed: 20, waterNeed: 6, fundingGroup: 'utilities', needsRoad: true, model: 'townhall' },
+  { id: 'monument', index: 0, icon: '🗽', category: 'civic', size: [2, 2], cost: 30000, upkeep: 120, jobs: 6, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 28, strength: 1 }, model: 'monument' },
   // Общественный транспорт
   { id: 'busdepot', index: 0, icon: '🚌', category: 'transit', size: [2, 2], cost: 7000, upkeep: 160, jobs: 10, powerNeed: 14, waterNeed: 3, fundingGroup: 'transit', needsRoad: true, fleet: { kind: 'bus', count: 8 }, model: 'busdepot' },
 ];
@@ -129,6 +132,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
   recycling: [up('sorting', '🗂️', 4500, 50, { burn: 1.8 }), up('hall', '🏭', 6000, 60, { capacity: 1.8 })],
   cemetery: [up('expansion', '🪦', 2500, 20, { capacity: 2 })],
   crematorium: [up('furnace', '🔥', 3500, 40, { burn: 1.8 }), up('filter', '🌫️', 3000, 30, { pollution: 0.4 })],
+  monument: [up('garden', '🌷', 3000, 20, { radius: 1.2, strength: 1.1 })],
   busdepot: [up('garage', '🅿️', 3000, 40, { fleet: 4 }), up('hybrid', '🔋', 4500, 30, { fleet: 2, jobs: 4 })],
 };
 const SOUNDS: Record<string, NonNullable<ServiceDef['sound']>> = {

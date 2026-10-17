@@ -10,8 +10,8 @@ declare module '../core/Game' {
 }
 
 export interface Budget {
-  income: { res: number; com: number; ind: number; transit: number };
-  expense: { roads: number; services: number; transit: number; interest: number };
+  income: { res: number; com: number; ind: number; transit: number; export: number };
+  expense: { roads: number; services: number; transit: number; interest: number; policies: number };
   incomeTotal: number;
   expenseTotal: number;
   net: number;
@@ -92,8 +92,10 @@ export class EconomySystem implements System {
     const g = this._game;
     const c = g.config.economy;
     const maps = g.get('maps');
-    const income = { res: 0, com: 0, ind: 0, transit: this._transitMonth };
-    const expense = { roads: 0, services: 0, transit: 0, interest: this.debt * c.loanInterest };
+    const income = { res: 0, com: 0, ind: 0, transit: this._transitMonth, export: 0 };
+    const expense = { roads: 0, services: 0, transit: 0, interest: this.debt * c.loanInterest, policies: g.get('policy').upkeep() };
+    const incomeMul = g.get('mods').mul('income');
+    let townhalls = 0;
 
     for (const b of g.world.list()) {
       if (b.kind === 'zone') {
@@ -103,8 +105,9 @@ export class EconomySystem implements System {
         const rate = (this.taxes[z.id] ?? c.defaultTax) / 100;
         let v = units * z.wage * rate * (c.landTaxBase + maps.sample('landValue', b.x, b.z));
         if (z.id === 'com') v *= c.goodsBase + c.goodsK * b.goods;
-        income[z.id as 'res' | 'com' | 'ind'] = (income[z.id as 'res' | 'com' | 'ind'] ?? 0) + v;
+        income[z.id as 'res' | 'com' | 'ind'] = (income[z.id as 'res' | 'com' | 'ind'] ?? 0) + v * incomeMul;
       } else {
+        if (b.defId === 'townhall' && !b.abandoned) townhalls++;
         const d = effectiveDef(g.services.require(b.defId), b.up);
         expense.services += d.upkeep * (this.funding[d.fundingGroup] ?? 1);
       }
@@ -113,8 +116,15 @@ export class EconomySystem implements System {
     for (const e of g.world.graph.edges.values()) expense.roads += (e.len / unit) * g.roadTypes.at(e.type).upkeep;
     expense.transit = g.get('transit').upkeep();
 
-    const incomeTotal = income.res + income.com + income.ind + income.transit;
-    const expenseTotal = expense.roads + expense.services + expense.transit + expense.interest;
+    // мэрия повышает сборы (до +10%); излишки энергии и воды продаются соседям
+    const civic = 1 + Math.min(0.1, townhalls * c.townhallBonus);
+    income.res *= civic;
+    income.com *= civic;
+    income.ind *= civic;
+    const u = g.get('utility');
+    income.export = Math.max(0, u.powerSupply - u.powerDemand * 1.1) * c.powerExport + Math.max(0, u.waterSupply - u.waterDemand * 1.1) * c.waterExport;
+    const incomeTotal = income.res + income.com + income.ind + income.transit + income.export;
+    const expenseTotal = expense.roads + expense.services + expense.transit + expense.interest + expense.policies;
     return { income, expense, incomeTotal, expenseTotal, net: incomeTotal - expenseTotal };
   }
 

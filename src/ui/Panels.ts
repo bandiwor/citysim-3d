@@ -179,9 +179,13 @@ export class Modal {
     if (tick) this._timer = window.setInterval(tick, 500);
   }
 
+  /** вызывается при закрытии окна */
+  onClose: () => void = () => {};
+
   close(): void {
     this.el.style.display = 'none';
     clearInterval(this._timer);
+    this.onClose();
   }
 
   get isOpen(): boolean {
@@ -225,9 +229,11 @@ export function budgetBody(game: Game): { el: HTMLElement; tick(): void } {
       line(t('budget.taxCom'), b.income.com),
       line(t('budget.taxInd'), b.income.ind),
       line(t('budget.fares'), b.income.transit),
+      line(t('budget.export'), b.income.export),
       line(t('budget.roads'), -b.expense.roads),
       line(t('budget.services'), -b.expense.services),
       line(t('budget.transit'), -b.expense.transit),
+      line(t('budget.policies'), -b.expense.policies),
       line(t('budget.interest'), -b.expense.interest),
       line(t('budget.total'), b.net, b.net < 0 ? 'neg total' : 'pos total'),
     );

@@ -1,4 +1,5 @@
 import { defaultConfig, mergeConfig, type DeepPartial, type GameConfig } from '../config/gameConfig';
+import type { PolicyDef } from '../data/policies';
 import type { RoadType } from '../data/roads';
 import type { ServiceDef } from '../data/services';
 import type { ZoneType } from '../data/zones';
@@ -53,6 +54,7 @@ export class Game {
   readonly roadTypes = new Registry<RoadType>();
   readonly zoneTypes = new Registry<ZoneType>();
   readonly services = new Registry<ServiceDef>();
+  readonly policies = new Registry<PolicyDef>();
   readonly overlays = new Registry<OverlayDef>();
   readonly toolbar = new Registry<ToolbarItem>();
   readonly categories: ToolbarCategory[] = [];

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dictionariesForTests, fmtMoney, fmtNumber, hasKey, setLocale, t } from '../src/i18n';
+import { CITY_EVENTS } from '../src/data/events';
 import { createGame } from './helpers';
 
 const en = dictionariesForTests.en;
@@ -74,5 +75,32 @@ describe('i18n', () => {
       expect(hasKey(k, 'en'), `en: ${k}`).toBe(true);
       expect(hasKey(k, 'ru'), `ru: ${k}`).toBe(true);
     }
+  });
+
+  it('есть переводы для политик, событий, уровней и эффектов', () => {
+    const g = createGame();
+    for (const l of ['en', 'ru'] as const) {
+      setLocale(l);
+      for (const p of g.policies.all()) {
+        expect(hasKey(`policy.${p.id}.name`), p.id).toBe(true);
+        expect(hasKey(`policy.${p.id}.desc`), p.id).toBe(true);
+        for (const k of [...Object.keys(p.mul ?? {}), ...Object.keys(p.add ?? {})]) expect(hasKey(`fx.${k}`), k).toBe(true);
+      }
+      for (const e of CITY_EVENTS) {
+        expect(hasKey(`event.${e.id}.title`), e.id).toBe(true);
+        expect(hasKey(`event.${e.id}.desc`), e.id).toBe(true);
+        for (const o of e.options) {
+          expect(hasKey(`event.${e.id}.opt.${o.id}`), `${e.id}.${o.id}`).toBe(true);
+          for (const k of [...Object.keys(o.mul ?? {}), ...Object.keys(o.add ?? {})]) expect(hasKey(`fx.${k}`), k).toBe(true);
+        }
+      }
+      for (const lv of g.config.progress.levels) expect(hasKey(`level.${lv.id}`), lv.id).toBe(true);
+      for (const key of Object.keys(g.config.progress.unlocks)) {
+        const kind = key.split(':')[0];
+        const id = key.slice(kind.length + 1);
+        expect(hasKey(kind === 'tool' ? `tool.${id.replace(':', '.')}.name` : `${kind}.${id}.name`), key).toBe(true);
+      }
+    }
+    setLocale('en');
   });
 });

@@ -18,6 +18,13 @@ import { LightTool, RouteTool, StopTool, TerraformTool, WalkTool } from '../tool
 import { BulldozeTool, PlaceTool, RoadTool, SelectTool, ZoneTool } from '../tools/Tools';
 import { CrimeSystem } from '../sim/CrimeSystem';
 import { PedestrianSystem } from '../sim/PedestrianSystem';
+import { POLICIES } from '../data/policies';
+import { ModifierSystem } from '../sim/ModifierSystem';
+import { PolicySystem } from '../sim/PolicySystem';
+import { ProgressSystem } from '../sim/ProgressSystem';
+import { ObjectiveSystem } from '../sim/ObjectiveSystem';
+import { EventSystem } from '../sim/EventSystem';
+import { AdvisorSystem } from '../sim/AdvisorSystem';
 import { FleetSystem } from '../sim/FleetSystem';
 import { SanitationSystem } from '../sim/SanitationSystem';
 import { registerOverlays } from './overlays';
@@ -33,6 +40,13 @@ export const coreFeature: Feature = {
   id: 'core',
   install(g) {
     g.addSystem(new TimeSystem());
+    g.addSystem(new ModifierSystem());
+    for (const p of POLICIES) g.policies.add({ ...p });
+    g.addSystem(new PolicySystem());
+    g.addSystem(new ProgressSystem());
+    g.addSystem(new ObjectiveSystem());
+    g.addSystem(new EventSystem());
+    g.addSystem(new AdvisorSystem());
     g.addSystem(new NetworkSystem());
     g.addSystem(new UtilitySystem());
     g.addSystem(new MapsSystem());
@@ -83,7 +97,7 @@ export const zonesFeature: Feature = {
   },
 };
 
-const CATEGORY_ICONS: Record<string, string> = { power: '⚡', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳', garbage: '🗑️' };
+const CATEGORY_ICONS: Record<string, string> = { power: '⚡', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳', garbage: '🗑️', civic: '🏛️' };
 
 export const servicesFeature: Feature = {
   id: 'services',

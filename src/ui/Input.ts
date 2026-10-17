@@ -43,11 +43,22 @@ export class Input implements ToolContext {
   }
 
   setTool(id: string): void {
+    const lockKey = this.game.get('progress').toolKey(id);
+    if (this.game.toolbar.has(id) && !this.game.get('progress').isUnlocked(lockKey)) {
+      this.game.message('err.locked', undefined, 'bad');
+      this.game.sfx('error');
+      return;
+    }
     if (this.tool) this.tool.deactivate?.(this);
     let tool = this._tools.get(id);
     if (!tool) {
       const item = this.game.toolbar.get(id);
       if (!item) return;
+      if (!this.game.get('progress').isUnlocked(this.game.get('progress').toolKey(id))) {
+        this.game.message('err.locked', undefined, 'bad');
+        this.game.sfx('error');
+        return;
+      }
       tool = item.createTool(this.game);
       this._tools.set(id, tool);
     }

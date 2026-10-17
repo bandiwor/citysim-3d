@@ -24,6 +24,8 @@ export class Toolbar {
     this._offs.push(
       _game.bus.on('tool:set', (id) => this._highlight(id)),
       _game.bus.on('economy:changed', () => this._affordable()),
+      _game.bus.on('tool:unlocked', () => this._relock()),
+      _game.bus.on('progress:level', () => this._relock()),
     );
     this._affordable();
     this._toggle('roads');
@@ -54,12 +56,30 @@ export class Toolbar {
         h('span', { class: 'ic', text: it.icon }),
         h('span', { class: 'nm', text: t(it.nameKey) }),
         it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
+        h('span', { class: 'lock', text: '' }),
       );
       this._itemBtns.set(it.id, b);
       this._items.append(b);
+      this._lockState(it.id, b);
     }
     this._affordable();
     this._markActive(this._getTool()?.id ?? '');
+  }
+
+  /** Замок на кнопке: показывает, при каком населении откроется. */
+  private _lockState(id: string, b: HTMLElement): void {
+    const pr = this._game.get('progress');
+    const key = pr.toolKey(id);
+    const locked = !pr.isUnlocked(key);
+    b.classList.toggle('locked', locked);
+    const lock = b.querySelector('.lock');
+    if (lock) lock.textContent = locked ? `🔒 ${fmtNumber(pr.unlockPop(key))} ${t('unit.people')}` : '';
+    const it = this._game.toolbar.get(id);
+    if (it) b.title = locked ? t('hint.locked', { n: fmtNumber(pr.unlockPop(key)) }) : it.descKey ? t(it.descKey) : t(it.nameKey);
+  }
+
+  private _relock(): void {
+    for (const [id, b] of this._itemBtns) this._lockState(id, b);
   }
 
   private _markActive(id: string): void {

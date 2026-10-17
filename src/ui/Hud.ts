@@ -16,11 +16,15 @@ export class Hud {
   private _power = h('span', { class: 'hud-val' });
   private _water = h('span', { class: 'hud-val' });
   private _bars = new Map<string, HTMLElement>();
+  private _level = h('span', { class: 'hud-level' });
+  private _lvFill = h('div', { class: 'lv-fill' });
+  private _badge = h('span', { class: 'badge', style: 'display:none' });
+  private _evBtn: HTMLElement;
   private _speedBtns: HTMLElement[] = [];
   private _timer = 0;
   private _off: () => void;
 
-  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void }) {
+  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void; goals(): void; policies(): void; advisor(btn: HTMLElement): void; event(): void }) {
     const bars = h('div', { class: 'rci', title: t('hud.demand') });
     for (const z of _game.zoneTypes.all()) {
       const fill = h('div', { class: 'rci-fill', style: `background:#${z.color.toString(16).padStart(6, '0')}` });
@@ -34,6 +38,8 @@ export class Hud {
       this._speedBtns.push(b);
       speeds.append(b);
     });
+    this._evBtn = h('button', { class: 'btn icon pulse', text: '📨', title: t('hud.event'), style: 'display:none', onclick: actions.event });
+    const advBtn = h('button', { class: 'btn icon relative', title: t('hud.advisor'), onclick: () => actions.advisor(advBtn) }, h('span', { text: '🔔' }), this._badge);
     const mapsBtn = h('button', { class: 'btn', text: `🗺️ ${t('hud.maps')}`, title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) });
     this.el = h(
       'div',
@@ -41,11 +47,16 @@ export class Hud {
       h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', text: '☰', title: t('hud.menu'), onclick: actions.menu }), this._date),
       h('div', { class: 'hud-group clickable', title: t('hud.budget'), onclick: actions.budget }, this._money, this._delta),
       h('div', { class: 'hud-group clickable', title: t('hud.stats'), onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
+      h('div', { class: 'hud-group clickable', title: t('hud.goals'), onclick: actions.goals }, this._level, h('div', { class: 'lv-bar' }, this._lvFill)),
       h('div', { class: 'hud-group', title: t('hud.utilities') }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
       bars,
       h('div', { class: 'hud-spacer' }),
       mapsBtn,
       h('div', { class: 'hud-group buttons' },
+        this._evBtn,
+        advBtn,
+        h('button', { class: 'btn icon', text: '🎯', title: `${t('hud.goals')} (J)`, onclick: actions.goals }),
+        h('button', { class: 'btn icon', text: '📜', title: `${t('hud.policies')} (K)`, onclick: actions.policies }),
         h('button', { class: 'btn icon', text: '💰', title: `${t('hud.budget')} (B)`, onclick: actions.budget }),
         h('button', { class: 'btn icon', text: '📊', title: `${t('hud.stats')} (G)`, onclick: actions.stats }),
         h('button', { class: 'btn icon', text: '🚌', title: `${t('hud.routes')} (T)`, onclick: actions.routes }),
@@ -79,6 +90,13 @@ export class Hud {
     const eco = g.get('economy');
     const u = g.get('utility');
     this._date.textContent = dateLabel(g.get('time'));
+    const pr = g.get('progress');
+    this._level.textContent = `🏙️ ${t(`level.${pr.levels[pr.level].id}`)}`;
+    this._lvFill.style.width = `${Math.round(pr.progressToNext() * 100)}%`;
+    const issues = g.get('advisor').issues.filter((i) => i.sev !== 'info').length;
+    this._badge.textContent = String(issues);
+    this._badge.style.display = issues ? 'block' : 'none';
+    this._evBtn.style.display = g.get('events').pending ? 'inline-block' : 'none';
     this._money.textContent = fmtMoney(eco.money);
     this._money.classList.toggle('neg', eco.money < 0);
     const net = (eco.last ?? eco.computeBudget()).net;

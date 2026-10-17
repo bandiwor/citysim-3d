@@ -34,6 +34,7 @@ export class UtilitySystem implements System {
     game.bus.on('building:added', mark);
     game.bus.on('building:removed', mark);
     game.bus.on('building:updated', mark);
+    game.bus.on('mods:changed', mark);
   }
 
   update(_dt: number, realDt: number): void {
@@ -71,6 +72,7 @@ export class UtilitySystem implements System {
     const wLeft = new Float64Array(count);
     this.powerSupply = this.powerDemand = this.waterSupply = this.waterDemand = 0;
     const list = g.world.list();
+    const pm = g.get('mods').mul('powerDemand');
 
     for (const b of list) {
       if (b.powerOut > 0 && !b.abandoned) {
@@ -79,7 +81,7 @@ export class UtilitySystem implements System {
       }
     }
     for (const b of list) {
-      const need = b.abandoned ? 0 : b.powerNeed;
+      const need = b.abandoned ? 0 : b.powerNeed * pm;
       this.powerDemand += need;
       if (need <= 0) b.powered = true;
       else if (b.comp >= 0 && pLeft[b.comp] >= need) {

@@ -49,6 +49,11 @@ export const defaultConfig = {
     loanStep: 10000,
     maxLoans: 5,
     loanInterest: 0.01,
+    /** доход с излишков энергии и воды, за единицу в месяц */
+    /** прибавка к налогам от одной мэрии (максимум +10% суммарно) */
+    townhallBonus: 0.05,
+    powerExport: 0.15,
+    waterExport: 0.05,
     stopCost: 250,
     stopUpkeep: 8,
     busUpkeep: 30,
@@ -259,6 +264,67 @@ export const defaultConfig = {
     timeout: 24,
     maxActive: 3,
     unhappy: -0.1,
+  },
+  progress: {
+    /** карьера: содержимое открывается по росту населения; false — песочница */
+    enabled: true,
+    /** уровни города: порог пиковой численности, награда при достижении */
+    levels: [
+      { id: 'hamlet', pop: 0, reward: 0 },
+      { id: 'village', pop: 150, reward: 3000 },
+      { id: 'town', pop: 500, reward: 6000 },
+      { id: 'largeTown', pop: 1200, reward: 12000 },
+      { id: 'smallCity', pop: 3000, reward: 25000 },
+      { id: 'city', pop: 6000, reward: 50000 },
+      { id: 'metropolis', pop: 12000, reward: 100000 },
+    ] as { id: string; pop: number; reward: number }[],
+    /** население, при котором открывается содержимое: ключи `road:<id>`, `service:<id>`, `tool:<id>`; нет записи — доступно сразу */
+    unlocks: {
+      'road:oneway': 100,
+      'road:country': 100,
+      'road:avenue': 300,
+      'road:boulevard': 900,
+      'road:highway': 2000,
+      'service:police': 100,
+      'service:fire': 150,
+      'service:landfill': 120,
+      'service:plaza': 100,
+      'service:clinic': 200,
+      'service:school': 250,
+      'service:cemetery': 300,
+      'service:bigpark': 400,
+      'service:pumpstation': 400,
+      'service:busdepot': 450,
+      'service:solar': 600,
+      'service:library': 600,
+      'service:waterplant': 700,
+      'service:hospital': 800,
+      'service:crematorium': 1000,
+      'service:townhall': 1000,
+      'service:gas': 1200,
+      'service:incinerator': 1500,
+      'service:recycling': 1500,
+      'service:policehq': 1800,
+      'service:firehq': 1800,
+      'service:university': 2500,
+      'service:stadium': 4000,
+      'service:monument': 6000,
+      'tool:light:add': 250,
+      'tool:route': 450,
+    } as Record<string, number>,
+  },
+  objectives: {
+    /** сколько целей активно одновременно */
+    active: 3,
+    /** множитель награды к базовой */
+    rewardMul: 1,
+  },
+  events: {
+    /** шанс события в начале месяца и минимальное население */
+    chancePerMonth: 0.45,
+    minPopulation: 120,
+    /** через сколько игровых дней нерешённое событие решается само (по умолчанию — «ничего не делать») */
+    expireDays: 20,
   },
   pedestrians: {
     max: 260,

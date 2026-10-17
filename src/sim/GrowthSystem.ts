@@ -64,6 +64,7 @@ export class GrowthSystem implements System {
     if (b.garbage > gc.cap * gc.unhappyAt) v += gc.unhappy;
     if (b.dead > 0) v += g.config.death.unhappy * Math.min(1, b.dead / 3);
     if (b.incident > 0) v += g.config.crime.unhappy;
+    v += g.get('mods').add('happiness');
     return clamp(v, 0, 1);
   }
 

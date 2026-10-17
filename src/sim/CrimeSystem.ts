@@ -58,7 +58,7 @@ export class CrimeSystem implements System {
       const d = Math.hypot(b.x - st.x, b.z - st.z) / st.r;
       if (d < 1) deter = Math.min(deter, c.stationDeterrence + (1 - c.stationDeterrence) * d * d);
     }
-    return c.baseRate * activity * deter * (1 + unemployment * c.unemploymentBoost) * (1 - police * c.policeEffect);
+    return g.get('mods').mul('crime') * c.baseRate * activity * deter * (1 + unemployment * c.unemploymentBoost) * (1 - police * c.policeEffect);
   }
 
   /** Начать ограбление в здании (вызывается случайно или вручную в тестах). */

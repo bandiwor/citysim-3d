@@ -21,7 +21,7 @@ export class DisasterSystem implements System {
     this.enabled = game.config.disasters.enabled;
     game.bus.on('time:month', () => {
       const c = game.config.disasters;
-      if (this.enabled && game.world.buildings.size > c.minBuildings && Math.random() < c.firePerMonth) this.ignite();
+      if (this.enabled && game.world.buildings.size > c.minBuildings && Math.random() < c.firePerMonth * game.get('mods').mul('fire')) this.ignite();
     });
   }
 

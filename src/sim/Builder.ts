@@ -112,10 +112,12 @@ export class Builder {
     const type = game.roadTypes.require(typeId);
     const hw = type.width / 2;
     const pts = this.roadPoints(a, b, ctrl);
+    const locked = !game.get('progress').isUnlocked(`road:${typeId}`);
     const length = polyLength(pts);
     const plan: RoadPlan = { ok: false, typeId, cost: 0, length, pts, hw, start: a, end: b, crossings: [], blockers: [] };
     const bad = (key: string): RoadPlan => ({ ...plan, ok: false, reasonKey: key });
 
+    if (locked) return bad('err.locked');
     if (length < cfg.roads.minSegmentLength) return bad('err.road.short');
     if (a.node && a.node === b.node) return bad('err.road.same');
 
@@ -445,6 +447,7 @@ export class Builder {
   placeService(defId: string, x: number, z: number, rot: number): PlaceResult {
     const game = this._game;
     const def = game.services.require(defId);
+    if (!game.get('progress').isUnlocked(`service:${defId}`)) return fail('err.locked');
     const check = this.canPlaceService(defId, x, z, rot);
     if (!check.ok) return check;
     const level = this.serviceCut(defId, x, z, rot);

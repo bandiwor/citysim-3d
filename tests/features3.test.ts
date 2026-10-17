@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SaveSystem } from '../src/sim/SaveSystem';
 import { effectiveDef } from '../src/data/services';
 import { hasKey, setLocale } from '../src/i18n';
 import { lookOf } from '../src/sim/looks';
@@ -403,4 +404,159 @@ describe('вывоз мусора', () => {
     expect(homes.reduce((s, b) => s + b.garbage, 0)).toBeLessThan(before * 0.4);
     expect(g.get('sanitation').overflowing).toBe(0);
   }, 30000);
+});
+
+describe('прогресс, политики, цели, события, советник', () => {
+  function career() {
+    const g = createGame({ size: 80, config: { progress: { enabled: true } } });
+    return g;
+  }
+
+  it('в карьере содержимое закрыто до роста города, в песочнице открыто', () => {
+    const g = career();
+    const b = g.builder;
+    road(g, 40, 100, 200, 100);
+    expect(g.get('progress').isUnlocked('service:hospital')).toBe(false);
+    const s = b.snapService('hospital', 100, 112);
+    expect(b.placeService('hospital', s.x, s.z, s.rot).reasonKey).toBe('err.locked');
+    expect(b.planRoad(b.snap(40, 200), b.snap(200, 200), null, 'highway').reasonKey).toBe('err.locked');
+    g.get('progress').restore(5000);
+    expect(g.get('progress').isUnlocked('service:hospital')).toBe(true);
+    expect(g.get('progress').level).toBeGreaterThanOrEqual(4);
+    const sandbox = createGame({ size: 80 });
+    expect(sandbox.get('progress').isUnlocked('service:stadium')).toBe(true);
+  });
+
+  it('достижение уровня выдаёт награду и сообщение', async () => {
+    const g = career();
+    const got: string[] = [];
+    g.bus.on('message', (m) => got.push(m.key));
+    const before = g.get('economy').money;
+    Object.defineProperty(g.get('stats'), 'population', { get: () => 200, set: () => {}, configurable: true });
+    await run(g, 1.5);
+    expect(g.get('progress').level).toBe(1);
+    expect(g.get('economy').money).toBe(before + g.config.progress.levels[1].reward);
+    expect(got).toContain('msg.levelUp');
+    expect(got).toContain('msg.unlocked');
+  });
+
+  it('политики меняют модификаторы и берут плату в бюджет', () => {
+    const g = createGame();
+    g.get('stats').population = 1000;
+    const ps = g.get('policy');
+    const crime0 = g.get('mods').mul('crime');
+    expect(ps.toggle('watch').ok).toBe(true);
+    expect(g.get('mods').mul('crime')).toBeCloseTo(crime0 * 0.6);
+    expect(g.get('economy').computeBudget().expense.policies).toBe(g.policies.require('watch').upkeep);
+    expect(ps.toggle('watch').ok).toBe(true);
+    expect(g.get('mods').mul('crime')).toBe(1);
+    expect(g.get('economy').computeBudget().expense.policies).toBe(0);
+    ps.toggle('parks');
+    expect(g.get('mods').add('happiness')).toBeCloseTo(0.04);
+  });
+
+  it('временный модификатор истекает через заданное число дней', async () => {
+    const g = createGame();
+    const mods = g.get('mods');
+    mods.put({ id: 'x', icon: '⭐', nameKey: 'event.festival.title', until: g.get('time').totalDays + 3, add: { happiness: 0.1 } });
+    expect(mods.add('happiness')).toBeCloseTo(0.1);
+    await run(g, g.config.time.dayLength * 4);
+    expect(mods.add('happiness')).toBe(0);
+  });
+
+  it('событие: выбор списывает деньги и накладывает эффект; без ответа применяется вариант по умолчанию', () => {
+    const g = createGame();
+    g.get('stats').population = 600;
+    const ev = g.get('events');
+    ev.start('crimewave');
+    expect(ev.pending?.id).toBe('crimewave');
+    const money = g.get('economy').money;
+    expect(ev.choose('patrols')).toBe(true);
+    expect(g.get('economy').money).toBeLessThan(money);
+    expect(g.get('mods').mul('crime')).toBeCloseTo(1.3);
+    expect(ev.pending).toBeNull();
+    ev.start('crimewave');
+    g.get('time').totalDays += g.config.events.expireDays + 1;
+    g.bus.emit('time:month');
+    expect(ev.pending).toBeNull();
+    expect(g.get('mods').mul('crime')).toBeCloseTo(2.4);
+    g.get('economy').money = 0;
+    ev.start('flu');
+    expect(ev.choose('vaccinate')).toBe(false);
+    expect(ev.pending?.id).toBe('flu');
+  });
+
+  it('цели подбираются под город, выполняются и приносят награду', async () => {
+    const g = await city();
+    const ob = g.get('objectives');
+    ob.active = [];
+    ob.fill();
+    expect(ob.active.length).toBeGreaterThan(0);
+    for (const o of ob.active) {
+      expect(ob.isDone(o)).toBe(false);
+      expect(ob.describe(o).text.length).toBeGreaterThan(3);
+    }
+    const money = g.get('economy').money;
+    const o = ob.active[0];
+    o.kind = 'money';
+    o.target = 1;
+    o.reward = 777;
+    await run(g, 1.2);
+    expect(ob.completed).toBe(1);
+    expect(g.get('economy').money).toBeGreaterThan(money + 700);
+    expect(ob.active.length).toBeGreaterThan(0);
+  });
+
+  it('советник находит проблемы и указывает место', async () => {
+    const g = await city();
+    await run(g, 30);
+    const adv = g.get('advisor');
+    const b = g.world.list().find((x) => x.kind === 'zone')!;
+    b.fire = 3;
+    adv.refresh();
+    const fire = adv.issues.find((i) => i.id === 'fire')!;
+    expect(fire.sev).toBe('bad');
+    expect(fire.x).toBe(b.x);
+    b.fire = 0;
+    Object.defineProperty(g.get('stats'), 'population', { get: () => 500, set: () => {}, configurable: true });
+    adv.refresh();
+    expect(adv.issues.some((i) => i.id === 'noPolice')).toBe(true);
+    expect(adv.issues.some((i) => i.id === 'noLandfill')).toBe(true);
+  });
+
+  it('излишки энергии продаются: доход растёт с запасом', async () => {
+    const g = await city();
+    const base = g.get('economy').computeBudget().income.export;
+    place(g, 'wind', 120, 80);
+    place(g, 'wind', 140, 80);
+    await settle(g);
+    expect(g.get('economy').computeBudget().income.export).toBeGreaterThanOrEqual(base);
+    expect(g.get('utility').powerSupply).toBeGreaterThan(g.get('utility').powerDemand);
+  });
+
+  it('сохранение хранит режим, политики, цели, модификаторы и событие', async () => {
+    const g = createGame({ size: 80, config: { progress: { enabled: true } } });
+    g.get('stats').population = 900;
+    g.get('progress').restore(900);
+    g.get('policy').toggle('smoke');
+    g.get('mods').put({ id: 'event:x', icon: '🎉', nameKey: 'event.festival.title', until: 50, add: { happiness: 0.05 } });
+    g.get('events').start('storm');
+    g.get('objectives').fill();
+    const data = JSON.parse(JSON.stringify(g.get('save').serialize()));
+    expect(data.mode).toBe('career');
+    expect(data.policies).toEqual(['smoke']);
+    expect(data.progress.peak).toBe(900);
+    expect(data.event.id).toBe('storm');
+    expect(data.mods).toHaveLength(1);
+    const g2 = createGame({ size: 80, start: false, config: { progress: { enabled: true } } });
+    SaveSystem.apply(g2, data);
+    g2.start();
+    g2.step(0.1);
+    expect(g2.get('policy').has('smoke')).toBe(true);
+    expect(g2.get('mods').mul('fire')).toBeCloseTo(0.45);
+    expect(g2.get('mods').add('happiness')).toBeCloseTo(0.05);
+    expect(g2.get('events').pending?.id).toBe('storm');
+    expect(g2.get('progress').peakPop).toBe(900);
+    expect(g2.get('objectives').active.length).toBe(g.get('objectives').active.length);
+  });
 });

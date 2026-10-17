@@ -1,4 +1,6 @@
 import type { Game } from '../core/Game';
+import type { Modifier } from './ModifierSystem';
+import type { Objective } from './ObjectiveSystem';
 import type { System } from '../core/System';
 
 declare module '../core/Game' {
@@ -85,10 +87,17 @@ export interface SaveData {
   history: { net: number[]; pop: number[]; money: number[] };
   /** правки рельефа: [индекс вершины, высота] */
   terrain?: [number, number][];
+  mode?: 'career' | 'sandbox';
+  progress?: { peak: number };
+  policies?: string[];
+  objectives?: { active: Objective[]; completed: number };
+  mods?: Modifier[];
+  event?: { id: string; day: number } | null;
 }
 
 /** Маршруты из сохранения, ожидающие запуска игры. */
 const pendingRoutes = new WeakMap<Game, SavedRoute[]>();
+const pendingState = new WeakMap<Game, SaveData>();
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
 
@@ -110,6 +119,7 @@ export class SaveSystem implements System {
   }
 
   update(): void {
+    this._restoreState();
     const routes = pendingRoutes.get(this._game);
     if (!routes) return;
     pendingRoutes.delete(this._game);
@@ -122,6 +132,24 @@ export class SaveSystem implements System {
       route.buses = r.buses;
       route.carried = r.carried;
     }
+  }
+
+  /** Состояние механик прогресса, целей, политик и событий из сохранения. */
+  private _restoreState(): void {
+    const d = pendingState.get(this._game);
+    if (!d) return;
+    pendingState.delete(this._game);
+    const g = this._game;
+    g.get('progress').restore(d.progress?.peak ?? 0);
+    g.get('policy').restore(d.policies ?? []);
+    for (const id of g.get('policy').enabled) g.get('policy').refresh(id);
+    for (const m of d.mods ?? []) g.get('mods').put(m);
+    const ob = g.get('objectives');
+    ob.active = (d.objectives?.active ?? []).filter((o) => o && typeof o.kind === 'string');
+    ob.completed = d.objectives?.completed ?? 0;
+    if (d.event) g.get('events').pending = d.event;
+    g.bus.emit('objectives:changed');
+    if (d.event) g.bus.emit('event:show');
   }
 
   init(game: Game): void {
@@ -155,6 +183,12 @@ export class SaveSystem implements System {
       buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}) })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
       terrain: [...w.terrainEdits].map(([k, h]) => [k, Math.round(h * 100) / 100] as [number, number]),
+      mode: g.config.progress.enabled ? 'career' : 'sandbox',
+      progress: { peak: g.get('progress').peakPop },
+      policies: [...g.get('policy').enabled],
+      objectives: { active: g.get('objectives').active, completed: g.get('objectives').completed },
+      mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:')),
+      event: g.get('events').pending,
     };
   }
 
@@ -195,8 +229,9 @@ export class SaveSystem implements System {
       w.bumpId(id);
       w.stops.push({ id, edge: 0, s: 0, x: s.x, z: s.z });
     }
-    // системы инициализируются в game.start(): маршруты восстанавливаются в первом кадре
+    // системы инициализируются в game.start(): маршруты и состояние механик восстанавливаются в первом кадре
     pendingRoutes.set(g, d.routes ?? []);
+    pendingState.set(g, d);
     for (const s of d.buildings) {
       if (s.k === 'zone' ? !g.zoneTypes.has(s.d) : !g.services.has(s.d)) continue;
       const b = g.builder.createBuilding(s.k, s.d, s.x, s.z, s.r, s.w, s.h, s.c);

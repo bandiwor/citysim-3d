@@ -88,6 +88,31 @@ serviceModels.set('recycling', () =>
     .build(),
 );
 
+serviceModels.set('townhall', () =>
+  new GeomBuilder()
+    .box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0xb9b6ad)
+    .box(12, 6, 6.4, 0, 0.2, -2.4, 0xeae3d2, { windows: true })
+    .box(12.4, 0.5, 6.8, 0, 6.2, -2.4, 0x7a6f60)
+    .box(8, 0.4, 2.4, 0, 5.4, 2.8, 0xd9d1be)
+    .cylinder(0.3, 0.34, 5.2, -3.4, 0.2, 3.4, 0xf3eee0, 8)
+    .cylinder(0.3, 0.34, 5.2, -1.1, 0.2, 3.4, 0xf3eee0, 8)
+    .cylinder(0.3, 0.34, 5.2, 1.1, 0.2, 3.4, 0xf3eee0, 8)
+    .cylinder(0.3, 0.34, 5.2, 3.4, 0.2, 3.4, 0xf3eee0, 8)
+    .box(3, 7, 3, 0, 6.7, -2.4, 0xeae3d2)
+    .cone(2.4, 3.4, 0, 13.7, -2.4, 0x5b7f8a, 4)
+    .cylinder(0.9, 0.9, 0.2, 0, 10, -0.8, 0xf6f6f6, 14, { rx: Math.PI / 2 })
+    .build(),
+);
+serviceModels.set('monument', () => {
+  const b = new GeomBuilder().box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0xcfc7b0);
+  b.cylinder(6.2, 6.6, 0.5, 0, 0.2, 0, 0xd9d3c3, 20).cylinder(4.6, 5, 0.5, 0, 0.7, 0, 0xe3ddce, 20).cylinder(3.2, 3.6, 0.6, 0, 1.2, 0, 0xece7d9, 16);
+  b.box(2.4, 8, 2.4, 0, 1.8, 0, 0xeee9dc).cone(1.9, 3, 0, 9.8, 0, 0xd6b24a, 4).sphere(0.6, 0, 12.8, 0, 0xffd966);
+  for (const [x, z] of [[-6.2, -6.2], [6.2, -6.2], [-6.2, 6.2], [6.2, 6.2]]) {
+    b.cylinder(0.25, 0.3, 1.6, x, 0.2, z, 0x7a5233, 6).sphere(1.1, x, 1.2, z, 0x4ca955);
+  }
+  return b.build();
+});
+
 // ---------------- детали улучшений ----------------
 
 const up = (key: string, f: (b: GeomBuilder) => void): void => void upgradeParts.set(key, f);
@@ -144,6 +169,7 @@ up('cemetery.expansion', (b) => {
 });
 up('crematorium.furnace', (b) => b.cylinder(0.7, 0.9, 8, -2.4, 4, -1.6, 0x77706a, 8));
 up('crematorium.filter', (b) => b.box(2, 3, 2, -3.6, 0, -2.4, 0xb9bfc6));
+up('monument.garden', (b) => b.cylinder(7.6, 7.8, 0.2, 0, 0.2, 0, 0x62b85a, 24).cylinder(2.8, 2.8, 0.25, 0, 0.2, 7.2, 0xe56b8a, 8));
 up('busdepot.garage', (b) => b.box(10, 4, 4, 0, 0.2, 4.6, 0xd7dde3).box(10.4, 0.5, 4.4, 0, 4.2, 4.6, 0x2d7a4f));
 up('busdepot.hybrid', (b) => {
   for (const x of [-5, -2.4, 0.2]) b.box(0.6, 1.8, 0.6, x, 0.2, -7, 0x4a4f55).box(0.8, 0.3, 0.8, x, 2, -7, 0x35e06a);

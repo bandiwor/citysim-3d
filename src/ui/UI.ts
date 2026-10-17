@@ -9,6 +9,7 @@ import { Clock, Hud } from './Hud';
 import { RouteTool } from '../tools/MoreTools';
 import { FirstPerson } from '../render/FirstPerson';
 import { cityBody, routesBody } from './TransitPanel';
+import { advisorList, eventBody, goalsBody, policiesBody } from './ProgressPanel';
 import { Input } from './Input';
 import { budgetBody, helpBody, Inspector, Modal, settingsBody, statsBody } from './Panels';
 import { Toolbar } from './Toolbar';
@@ -21,6 +22,8 @@ export class UI {
   private _hint = h('div', { class: 'cursor-hint', style: 'display:none' });
   private _info = h('div', { class: 'cell-info' });
   private _mapsMenu = h('div', { class: 'panel maps-menu', style: 'display:none' });
+  private _advMenu = h('div', { class: 'panel maps-menu adv-menu', style: 'display:none' });
+  private _tracker = h('div', { class: 'tracker' });
   private _parts: { dispose(): void }[] = [];
   readonly fp: FirstPerson;
   private _fpBar = h('div', { class: 'fp-bar', style: 'display:none' });
@@ -39,7 +42,13 @@ export class UI {
       this._hint.style.transform = `translate(${x + 18}px, ${y + 14}px)`;
     };
     this.input.onHover = (p) => this._hover(p);
+    this._modal.onClose = () => (this._eventOpen = false);
     _game.bus.on('message', (m) => this._toast(t(m.key, m.params), m.kind));
+    _game.bus.on('event:show', () => {
+      if (this._game.get('events').pending) this.openEvent();
+      else if (this._eventOpen) this._modal.close();
+    });
+    window.setInterval(() => this._drawTracker(), 1000);
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
       if (this.fp.active) return;
@@ -47,6 +56,8 @@ export class UI {
       if (this.fp.active) return;
       if (e.code === 'KeyG' && !e.ctrlKey) this.openStats();
       if (e.code === 'KeyT') this.openRoutes();
+      if (e.code === 'KeyJ') this.openGoals();
+      if (e.code === 'KeyK') this.openPolicies();
       if (e.code === 'KeyH') this.openCity();
       if (e.code === 'KeyP') this.enterWalk();
       if (e.code === 'Escape' && this._modal.isOpen) this._modal.close();
@@ -75,6 +86,10 @@ export class UI {
       settings: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, renderer: this._renderer, audio: this._audio, onLocale: (l) => setLocale(l) })),
       help: () => this._modal.open(t('menu.help'), helpBody()),
       save: () => g.get('save').save(),
+      goals: () => this.openGoals(),
+      policies: () => this.openPolicies(),
+      advisor: (btn) => this._toggleAdvisor(btn),
+      event: () => this.openEvent(),
     });
     const clock = new Clock(g);
     const toolbar = new Toolbar(g, () => this.input.tool);
@@ -85,7 +100,9 @@ export class UI {
       h('div', { class: 'fp-help', text: t('fp.help') }),
       h('button', { class: 'btn', text: `⏎ ${t('fp.exit')}`, onclick: () => this.fp.exit() }),
     );
-    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._modal.el);
+    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._modal.el);
+    this._advMenu.style.display = 'none';
+    this._drawTracker();
     this._modal.close();
     this._mapsMenu.style.display = 'none';
     if (this.input.toolId) g.bus.emit('tool:set', this.input.toolId);
@@ -94,6 +111,62 @@ export class UI {
   openBudget(): void {
     const b = budgetBody(this._game);
     this._modal.open(`💰 ${t('modal.budget')}`, b.el, () => b.tick());
+  }
+
+  private _eventOpen = false;
+
+  openGoals(): void {
+    const b = goalsBody(this._game);
+    this._eventOpen = false;
+    this._modal.open(`🎯 ${t('modal.goals')}`, b.el, () => b.tick());
+  }
+
+  openPolicies(): void {
+    const b = policiesBody(this._game);
+    this._eventOpen = false;
+    this._modal.open(`📜 ${t('modal.policies')}`, b.el, () => b.tick());
+  }
+
+  openEvent(): void {
+    const p = this._game.get('events').pending;
+    const d = p && this._game.get('events').def(p.id);
+    if (!d) return;
+    this._modal.open(`${d.icon} ${t(`event.${d.id}.title`)}`, eventBody(this._game, () => this._modal.close()));
+    this._eventOpen = true;
+  }
+
+  private _toggleAdvisor(btn: HTMLElement): void {
+    const m = this._advMenu;
+    if (m.style.display !== 'none') {
+      m.style.display = 'none';
+      return;
+    }
+    this._game.get('advisor').refresh();
+    const r = btn.getBoundingClientRect();
+    m.style.display = 'flex';
+    m.style.top = `${r.bottom + 6}px`;
+    m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    m.replaceChildren(
+      h('div', { class: 'panel-head' }, h('span', { text: `🔔 ${t('hud.advisor')}` })),
+      ...advisorList(this._game, (x, z) => this._renderer.camera.focus(x, z), () => (m.style.display = 'none')),
+    );
+  }
+
+  /** Компактный список активных целей на экране. */
+  private _drawTracker(): void {
+    const ob = this._game.get('objectives');
+    if (this.fp.active) {
+      this._tracker.style.display = 'none';
+      return;
+    }
+    this._tracker.style.display = ob.active.length ? 'flex' : 'none';
+    this._tracker.replaceChildren(
+      h('div', { class: 'tr-head', text: `🎯 ${t('modal.goals')}`, onclick: () => this.openGoals() }),
+      ...ob.active.map((o) => {
+        const d = ob.describe(o);
+        return h('div', { class: 'tr-row', title: `${d.value} / ${d.target}` }, h('span', { text: d.text }), h('div', { class: 'tr-bar' }, h('div', { class: 'tr-fill', style: `width:${Math.round(ob.fraction(o) * 100)}%` })));
+      }),
+    );
   }
 
   openRoutes(): void {

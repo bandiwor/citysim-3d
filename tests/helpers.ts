@@ -14,7 +14,7 @@ export interface TestGameOptions {
 /** Игра на ровной карте с синхронным вычислителем (без воркеров) и всеми фичами. */
 export function createGame(o: TestGameOptions = {}): Game {
   const size = o.size ?? 60;
-  const game = new Game({ seed: 1, terrain: flatTerrain(size), config: { disasters: { enabled: false }, ...o.config } });
+  const game = new Game({ seed: 1, terrain: flatTerrain(size), config: { disasters: { enabled: false }, progress: { enabled: false }, ...o.config } });
   game.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(disastersFeature);
   if (o.start !== false) {
     game.start();

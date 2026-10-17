@@ -170,6 +170,7 @@ animations.set('bigpark', (b, g) => [fountain(0, 2.8, 0, has(g, b, 'pavilion') ?
 animations.set('plaza', () => [fountain(0, 1.7, 0, 0.9)]);
 animations.set('landfill', () => [gulls(9)]);
 animations.set('recycling', () => [spinner(5.6, 7.6, -3.4, 0x2f9f5f)]);
+animations.set('townhall', () => [flag(0, 17.2, -2.4, 0x2f6fd0)]);
 animations.set('school', () => [flag(6, 8.2, 5, 0xd33a3a)]);
 
 /** Анимированные детали специальных зданий: дым, лопасти, мигалки, фонтаны, чайки. */
