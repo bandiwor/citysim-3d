@@ -4,6 +4,33 @@ import type { Indexed } from '../core/Registry';
 export const FUNDING_GROUPS = ['police', 'fire', 'health', 'education', 'parks', 'utilities', 'sanitation', 'transit'] as const;
 export type FundingGroup = (typeof FUNDING_GROUPS)[number];
 
+/** Улучшение здания-службы: покупается один раз, меняет внешний вид и характеристики. */
+export interface UpgradeDef {
+  /** уникален в пределах службы; перевод — `upgrade.<служба>.<id>.name|desc` */
+  id: string;
+  icon: string;
+  cost: number;
+  /** добавка к содержанию в месяц */
+  upkeep: number;
+  /** множители (×) и добавки (+) к характеристикам */
+  fx: {
+    /** × производство электричества / воды */
+    power?: number;
+    water?: number;
+    /** × радиус и сила покрытия */
+    radius?: number;
+    strength?: number;
+    /** × загрязнение */
+    pollution?: number;
+    /** × ёмкость хранилища, × скорость сжигания */
+    capacity?: number;
+    burn?: number;
+    /** + машин в парке, + рабочих мест */
+    fleet?: number;
+    jobs?: number;
+  };
+}
+
 export interface ServiceDef extends Indexed {
   icon: string;
   /** категория на панели инструментов */
@@ -30,6 +57,10 @@ export interface ServiceDef extends Indexed {
   waste?: { capacity: number; burn: number };
   /** кладбище / крематорий: ёмкость (мест) и скорость кремации (тел/с) */
   morgue?: { capacity: number; burn: number };
+  /** звук здания, слышимый рядом (ветряк, механизмы, фонтан, чайки, дети) */
+  sound?: 'turbine' | 'machinery' | 'gulls' | 'fountain' | 'kids';
+  /** доступные улучшения (максимум 30) */
+  upgrades?: UpgradeDef[];
 }
 
 export const SERVICES: ServiceDef[] = [
@@ -57,6 +88,111 @@ export const SERVICES: ServiceDef[] = [
   { id: 'incinerator', index: 0, icon: '♨️', category: 'garbage', size: [2, 2], cost: 14000, upkeep: 320, jobs: 25, powerNeed: 12, waterNeed: 8, fundingGroup: 'sanitation', needsRoad: true, provides: { power: 160 }, pollution: { radius: 6, strength: 0.55 }, waste: { capacity: 500, burn: 6 }, fleet: { kind: 'garbage', count: 3 }, model: 'incinerator' },
   { id: 'cemetery', index: 0, icon: '🪦', category: 'garbage', size: [3, 3], cost: 4500, upkeep: 50, jobs: 4, powerNeed: 0, waterNeed: 0, fundingGroup: 'sanitation', needsRoad: true, morgue: { capacity: 1000, burn: 0 }, fleet: { kind: 'hearse', count: 2 }, model: 'cemetery' },
   { id: 'crematorium', index: 0, icon: '⚱️', category: 'garbage', size: [2, 2], cost: 7000, upkeep: 140, jobs: 8, powerNeed: 14, waterNeed: 4, fundingGroup: 'sanitation', needsRoad: true, pollution: { radius: 5, strength: 0.35 }, morgue: { capacity: 60, burn: 0.4 }, fleet: { kind: 'hearse', count: 2 }, model: 'crematorium' },
+  { id: 'gas', index: 0, icon: '🔥', category: 'power', size: [2, 2], cost: 9000, upkeep: 220, jobs: 18, powerNeed: 0, waterNeed: 6, fundingGroup: 'utilities', needsRoad: true, provides: { power: 380 }, pollution: { radius: 6, strength: 0.45 }, model: 'gas' },
+  { id: 'pumpstation', index: 0, icon: '⛽', category: 'power', size: [1, 1], cost: 3200, upkeep: 70, jobs: 4, powerNeed: 16, waterNeed: 0, fundingGroup: 'utilities', needsRoad: true, provides: { water: 950 }, model: 'pumpstation' },
+  { id: 'policehq', index: 0, icon: '🏛️', category: 'safety', size: [2, 2], cost: 9000, upkeep: 380, jobs: 30, powerNeed: 30, waterNeed: 6, fundingGroup: 'police', needsRoad: true, coverage: { type: 'police', radius: 22, strength: 1 }, fleet: { kind: 'police', count: 5 }, model: 'policehq' },
+  { id: 'firehq', index: 0, icon: '🚨', category: 'safety', size: [2, 2], cost: 8000, upkeep: 340, jobs: 28, powerNeed: 28, waterNeed: 10, fundingGroup: 'fire', needsRoad: true, coverage: { type: 'fire', radius: 24, strength: 1 }, model: 'firehq' },
+  { id: 'library', index: 0, icon: '📚', category: 'education', size: [2, 2], cost: 4200, upkeep: 140, jobs: 10, powerNeed: 10, waterNeed: 3, fundingGroup: 'education', needsRoad: true, coverage: { type: 'education', radius: 14, strength: 0.5 }, model: 'library' },
+  { id: 'plaza', index: 0, icon: '⛲', category: 'parks', size: [1, 1], cost: 700, upkeep: 10, jobs: 0, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 8, strength: 1 }, model: 'plaza' },
+  { id: 'stadium', index: 0, icon: '🏟️', category: 'parks', size: [3, 3], cost: 16000, upkeep: 420, jobs: 20, powerNeed: 60, waterNeed: 10, fundingGroup: 'parks', needsRoad: true, coverage: { type: 'park', radius: 18, strength: 1 }, model: 'stadium' },
+  { id: 'recycling', index: 0, icon: '♻️', category: 'garbage', size: [2, 2], cost: 6500, upkeep: 180, jobs: 14, powerNeed: 18, waterNeed: 4, fundingGroup: 'sanitation', needsRoad: true, waste: { capacity: 350, burn: 3 }, fleet: { kind: 'garbage', count: 2 }, model: 'recycling' },
   // Общественный транспорт
   { id: 'busdepot', index: 0, icon: '🚌', category: 'transit', size: [2, 2], cost: 7000, upkeep: 160, jobs: 10, powerNeed: 14, waterNeed: 3, fundingGroup: 'transit', needsRoad: true, fleet: { kind: 'bus', count: 8 }, model: 'busdepot' },
 ];
+
+const up = (id: string, icon: string, cost: number, upkeep: number, fx: UpgradeDef['fx']): UpgradeDef => ({ id, icon, cost, upkeep, fx });
+
+/** Улучшения по службам (подключаются к определениям при загрузке модуля). */
+const UPGRADES: Record<string, UpgradeDef[]> = {
+  coal: [up('scrubbers', '🧪', 6000, 40, { pollution: 0.45 }), up('turbines', '⚙️', 9000, 60, { power: 1.5 }), up('capture', '🌫️', 14000, 90, { pollution: 0.6, power: 1.15 })],
+  gas: [up('turbine', '⚙️', 7000, 50, { power: 1.4 }), up('recovery', '♨️', 9000, 70, { power: 1.2, pollution: 0.6 })],
+  wind: [up('rotor', '🌀', 1800, 8, { power: 1.6 }), up('tower', '🗼', 3200, 12, { power: 1.4 })],
+  solar: [up('tracker', '🧭', 5000, 20, { power: 1.4 }), up('cells', '🔋', 7000, 25, { power: 1.3 })],
+  watertower: [up('pump', '🔧', 1500, 10, { water: 1.6 })],
+  pumpstation: [up('pump', '🔧', 2500, 18, { water: 1.5 }), up('filter', '🧫', 3500, 22, { water: 1.3, jobs: 2 })],
+  waterplant: [up('filter', '🧫', 4000, 30, { water: 1.5 }), up('reservoir', '🌊', 6000, 45, { water: 1.4 })],
+  police: [up('cars', '🚓', 1800, 25, { fleet: 2 }), up('station', '🏢', 3500, 40, { radius: 1.35, strength: 1.1, jobs: 4 })],
+  policehq: [up('swat', '🛡️', 6000, 90, { fleet: 3, strength: 1.1 }), up('lab', '🔬', 7000, 100, { radius: 1.25 })],
+  fire: [up('ladder', '🪜', 2500, 30, { radius: 1.3 }), up('tank', '💧', 3000, 35, { strength: 1.2, jobs: 3 })],
+  firehq: [up('copter', '🚁', 7000, 90, { radius: 1.3 }), up('academy', '🎓', 6000, 70, { strength: 1.2 })],
+  clinic: [up('lab', '🧪', 2000, 25, { strength: 1.3 }), up('ward', '🛏️', 3000, 40, { radius: 1.25, jobs: 4 })],
+  hospital: [up('wing', '🏥', 5000, 80, { radius: 1.3, jobs: 15 }), up('icu', '💉', 7000, 110, { strength: 1.2 }), up('helipad', '🚁', 9000, 90, { radius: 1.2 })],
+  school: [up('labs', '🔬', 2600, 30, { strength: 1.3 }), up('sports', '🏀', 2000, 20, { radius: 1.2, jobs: 2 })],
+  library: [up('digital', '💻', 2500, 30, { strength: 1.4 })],
+  university: [up('research', '🧬', 9000, 120, { radius: 1.3, jobs: 20 }), up('campus', '🏛️', 12000, 150, { strength: 1.2, radius: 1.15 })],
+  park: [up('playground', '🛝', 400, 4, { strength: 1.25 })],
+  plaza: [up('fountain', '⛲', 500, 5, { strength: 1.25, radius: 1.2 })],
+  bigpark: [up('pavilion', '🎪', 1200, 10, { radius: 1.3 }), up('lake', '🦆', 1800, 14, { strength: 1.2 })],
+  stadium: [up('lights', '💡', 5000, 60, { strength: 1.2 }), up('roof', '🏟️', 9000, 90, { radius: 1.3, jobs: 15 })],
+  landfill: [up('compaction', '🚜', 3000, 30, { capacity: 1.8 }), up('gas', '♨️', 3500, 25, { pollution: 0.7 })],
+  incinerator: [up('filters', '🌫️', 5000, 60, { pollution: 0.4 }), up('boiler', '🔥', 4000, 50, { burn: 1.6, power: 1.3 })],
+  recycling: [up('sorting', '🗂️', 4500, 50, { burn: 1.8 }), up('hall', '🏭', 6000, 60, { capacity: 1.8 })],
+  cemetery: [up('expansion', '🪦', 2500, 20, { capacity: 2 })],
+  crematorium: [up('furnace', '🔥', 3500, 40, { burn: 1.8 }), up('filter', '🌫️', 3000, 30, { pollution: 0.4 })],
+  busdepot: [up('garage', '🅿️', 3000, 40, { fleet: 4 }), up('hybrid', '🔋', 4500, 30, { fleet: 2, jobs: 4 })],
+};
+const SOUNDS: Record<string, NonNullable<ServiceDef['sound']>> = {
+  wind: 'turbine',
+  coal: 'machinery',
+  gas: 'machinery',
+  incinerator: 'machinery',
+  crematorium: 'machinery',
+  waterplant: 'machinery',
+  pumpstation: 'machinery',
+  recycling: 'machinery',
+  busdepot: 'machinery',
+  landfill: 'gulls',
+  bigpark: 'fountain',
+  plaza: 'fountain',
+  school: 'kids',
+  park: 'kids',
+  stadium: 'kids',
+};
+for (const d of SERVICES) {
+  d.upgrades = UPGRADES[d.id];
+  d.sound = SOUNDS[d.id];
+}
+
+/** Максимум улучшений на здание: битовая маска. */
+export const MAX_UPGRADES = 30;
+
+/** Идентификаторы установленных улучшений по маске. */
+export function installedUpgrades(def: ServiceDef, mask: number): UpgradeDef[] {
+  return (def.upgrades ?? []).filter((_, i) => mask & (1 << i));
+}
+
+const effCache = new Map<string, ServiceDef>();
+
+/** Определение службы с учётом установленных улучшений (кэшируется по маске). */
+export function effectiveDef(def: ServiceDef, mask: number): ServiceDef {
+  if (!mask || !def.upgrades) return def;
+  const key = `${def.id}:${mask}`;
+  let e = effCache.get(key);
+  if (e) return e;
+  e = { ...def, provides: def.provides && { ...def.provides }, coverage: def.coverage && { ...def.coverage }, pollution: def.pollution && { ...def.pollution }, waste: def.waste && { ...def.waste }, morgue: def.morgue && { ...def.morgue }, fleet: def.fleet && { ...def.fleet } };
+  for (const u of installedUpgrades(def, mask)) {
+    const f = u.fx;
+    e.upkeep += u.upkeep;
+    if (e.provides) {
+      if (f.power && e.provides.power) e.provides.power *= f.power;
+      if (f.water && e.provides.water) e.provides.water *= f.water;
+    }
+    if (e.coverage) {
+      if (f.radius) e.coverage.radius *= f.radius;
+      if (f.strength) e.coverage.strength = Math.min(1.5, e.coverage.strength * f.strength);
+    }
+    if (e.pollution && f.pollution) e.pollution.strength *= f.pollution;
+    if (e.waste) {
+      if (f.capacity) e.waste.capacity *= f.capacity;
+      if (f.burn) e.waste.burn *= f.burn;
+    }
+    if (e.morgue) {
+      if (f.capacity) e.morgue.capacity *= f.capacity;
+      if (f.burn) e.morgue.burn *= f.burn;
+    }
+    if (e.fleet && f.fleet) e.fleet.count += f.fleet;
+    if (f.jobs) e.jobs += f.jobs;
+  }
+  effCache.set(key, e);
+  return e;
+}

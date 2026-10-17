@@ -1,3 +1,4 @@
+import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import { FUNDING_GROUPS } from '../data/services';
@@ -104,7 +105,7 @@ export class EconomySystem implements System {
         if (z.id === 'com') v *= c.goodsBase + c.goodsK * b.goods;
         income[z.id as 'res' | 'com' | 'ind'] = (income[z.id as 'res' | 'com' | 'ind'] ?? 0) + v;
       } else {
-        const d = g.services.require(b.defId);
+        const d = effectiveDef(g.services.require(b.defId), b.up);
         expense.services += d.upkeep * (this.funding[d.fundingGroup] ?? 1);
       }
     }

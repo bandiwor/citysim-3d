@@ -136,10 +136,11 @@ export class GrowthSystem implements System {
       if (z.housing) {
         let target = ok ? b.cap * clamp(c.moveInBase + b.happiness * c.moveInHappiness, 0, 1) : 0;
         if ((demand[z.id] ?? 0) < c.emigrateDemand) target *= c.emigrateFactor;
-        const step = Math.max(1, b.cap * c.moveInStep);
+        target = Math.round(target);
+        const step = Math.max(1, Math.round(b.cap * c.moveInStep));
         if (b.pop < target) b.pop = Math.min(target, b.pop + step);
         else if (b.pop > target) b.pop = Math.max(target, b.pop - step);
-        b.pop = Math.min(b.pop, b.cap);
+        b.pop = Math.min(Math.round(b.pop), Math.floor(b.cap));
       } else if (z.id === 'com') {
         b.goods = clamp(b.goods - c.goodsDecay * dt * (c.goodsActivity + b.workers / Math.max(1, b.jobs)), 0, 1);
       }

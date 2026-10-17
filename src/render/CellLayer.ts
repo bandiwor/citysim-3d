@@ -26,7 +26,9 @@ export class CellLayer {
   }
 
   set(i: number, r: number, g: number, b: number, a: number): void {
-    const k = i * 4;
+    // строка 0 текстуры лежит на максимальном z плоскости: переворачиваем ряд, чтобы клетка (x, z) попадала на своё место
+    const row = Math.floor(i / this.size);
+    const k = ((this.size - 1 - row) * this.size + (i - row * this.size)) * 4;
     this.data[k] = r;
     this.data[k + 1] = g;
     this.data[k + 2] = b;

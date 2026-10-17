@@ -1,3 +1,4 @@
+import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building, BusStop } from '../core/types';
@@ -447,7 +448,7 @@ export class TransitSystem implements System {
     let bd = Infinity;
     for (const f of g.get('fleet').facilities('bus')) {
       if (f.comp !== comp || comp < 0) continue;
-      const cap = g.services.require(f.defId).fleet?.count ?? 0;
+      const cap = effectiveDef(g.services.require(f.defId), f.up).fleet?.count ?? 0;
       if (this._busesFrom(f.id) >= cap) continue;
       const d = Math.hypot(f.x - first.x, f.z - first.z);
       if (d < bd) {

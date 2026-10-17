@@ -1,3 +1,4 @@
+import { effectiveDef } from '../data/services';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
@@ -86,7 +87,7 @@ export class MapsSystem implements System {
     for (const b of g.world.list()) {
       if (b.abandoned) continue;
       if (b.kind === 'service') {
-        const d = g.services.require(b.defId);
+        const d = effectiveDef(g.services.require(b.defId), b.up);
         const working = b.powered || d.powerNeed === 0;
         if (d.coverage && working) {
           const f = Math.min(c.maxFundingEffect, funding[d.fundingGroup] ?? 1);

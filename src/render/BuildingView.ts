@@ -1,6 +1,8 @@
-import { Color, Matrix4, Quaternion, Vector3, type Scene } from 'three';
+import { Color, type BufferGeometry, Matrix4, Quaternion, Vector3, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import type { Building } from '../core/types';
+import './serviceExtras';
+import { installedUpgrades } from '../data/services';
 import { BuildingMaterials } from './Materials';
 import { InstancePool } from './InstancePool';
 import { serviceModel, zoneModel } from './models';
@@ -45,15 +47,20 @@ export class BuildingView implements View {
   }
 
   private _poolFor(b: Building): InstancePool {
-    const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}` : b.defId;
+    const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}` : `${b.defId}:${b.up}`;
     let pool = this._pools.get(key);
     if (!pool) {
-      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant) : serviceModel(this._game.services.require(b.defId).model, this._game.services.require(b.defId).size[0], this._game.services.require(b.defId).size[1]);
+      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant) : this._serviceGeo(b);
       pool = new InstancePool(geo, this.materials.material, b.kind === 'zone' ? 2600 : 200);
       this._pools.set(key, pool);
       this._scene.add(pool.mesh);
     }
     return pool;
+  }
+
+  private _serviceGeo(b: Building): BufferGeometry {
+    const def = this._game.services.require(b.defId);
+    return serviceModel(def.model, def.size[0], def.size[1], installedUpgrades(def, b.up).map((u) => u.id));
   }
 
   private _tint(b: Building): number {

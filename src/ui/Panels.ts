@@ -1,7 +1,7 @@
 import type { Game } from '../core/Game';
 import type { Building } from '../core/types';
 import type { AudioEngine, AudioChannel } from '../audio/AudioEngine';
-import { FUNDING_GROUPS } from '../data/services';
+import { effectiveDef, FUNDING_GROUPS } from '../data/services';
 import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, getLocale, LOCALES, t, type Locale } from '../i18n';
 import type { Renderer } from '../render/Renderer';
 import { h } from './dom';
@@ -16,6 +16,7 @@ export class Inspector {
   readonly el = h('div', { class: 'panel inspector', style: 'display:none' });
   private _b: Building | null = null;
   private _stop = 0;
+  private _hover = false;
   private _timer: number;
   private _offs: (() => void)[] = [];
 
@@ -38,7 +39,10 @@ export class Inspector {
         }
       }),
     );
-    this._timer = window.setInterval(() => (this._b || this._stop) && this.render(), 600);
+    this.el.addEventListener('pointerenter', () => (this._hover = true));
+    this.el.addEventListener('pointerleave', () => (this._hover = false));
+    // не перерисовываем под курсором, иначе клик по кнопке теряется
+    this._timer = window.setInterval(() => (this._b || this._stop) && !this._hover && this.render(), 600);
     this.render();
   }
 
@@ -93,8 +97,12 @@ export class Inspector {
     let icon: string;
     if (b.kind === 'zone') {
       const z = g.zoneTypes.require(b.zone);
-      title = `${t(`zone.${z.id}.name`)} · ${t('inspector.level', { n: b.level })}`;
+      title = `${t(`zone.${z.id}.name`)}`;
       icon = z.icon;
+      const next = z.levels[b.level];
+      row(t('inspector.levelRow'), h('span', { class: 'v stars', text: `${'★'.repeat(b.level)}${'☆'.repeat(z.levels.length - b.level)}  ${b.level}/${z.levels.length}` }));
+      if (next) row(t('inspector.nextLevel'), t('inspector.nextReq', { land: fmtPercent(next.reqLand), edu: fmtPercent(next.reqEdu) }));
+      else row(t('inspector.nextLevel'), t('inspector.maxLevel'));
       if (z.housing) row(t('inspector.residents'), `${fmtNumber(b.pop)} / ${fmtNumber(b.cap)}`);
       else row(t('inspector.workers'), `${fmtNumber(b.workers)} / ${fmtNumber(b.jobs)}`);
       if (z.housing) row(t('inspector.employed'), fmtPercent(1 - g.get('stats').unemployment));
@@ -106,14 +114,18 @@ export class Inspector {
       const d = g.services.require(b.defId);
       title = t(`service.${d.id}.name`);
       icon = d.icon;
-      row(t('inspector.upkeep'), `${fmtMoney(d.upkeep * (g.get('economy').funding[d.fundingGroup] ?? 1))}${t('unit.perMonth')}`);
+      const lv = g.builder.serviceLevel(b);
+      if (lv.max > 1) row(t('inspector.levelRow'), h('span', { class: 'v stars', text: `${'★'.repeat(lv.level)}${'☆'.repeat(lv.max - lv.level)}  ${lv.level}/${lv.max}` }));
+      const e = effectiveDef(d, b.up);
+      row(t('inspector.upkeep'), `${fmtMoney(e.upkeep * (g.get('economy').funding[d.fundingGroup] ?? 1))}${t('unit.perMonth')}`);
       if (d.jobs) row(t('inspector.staff'), `${fmtNumber(b.workers)} / ${fmtNumber(d.jobs)}`);
-      if (d.waste) row(t('inspector.wasteStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(d.waste.capacity)}`);
-      if (d.morgue) row(t('inspector.bodiesStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(d.morgue.capacity)}`);
-      if (d.fleet) row(t('inspector.fleet'), `${d.fleet.count} · ${t(`fleet.${d.fleet.kind}`)}`);
-      if (d.provides?.power) row(t('inspector.power'), `+${fmtNumber(d.provides.power)}`);
-      if (d.provides?.water) row(t('inspector.water'), `+${fmtNumber(d.provides.water)}`);
-      if (d.coverage) row(t('inspector.radius'), `${d.coverage.radius} ${t('unit.cells')}`);
+      if (e.waste) row(t('inspector.wasteStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(e.waste.capacity)}`);
+      if (e.morgue) row(t('inspector.bodiesStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(e.morgue.capacity)}`);
+      if (e.fleet) row(t('inspector.fleet'), `${e.fleet.count} · ${t(`fleet.${e.fleet.kind}`)}`);
+      if (e.provides?.power) row(t('inspector.power'), `+${fmtNumber(e.provides.power)}`);
+      if (e.provides?.water) row(t('inspector.water'), `+${fmtNumber(e.provides.water)}`);
+      if (e.coverage) row(t('inspector.radius'), `${Math.round(e.coverage.radius * 10) / 10} ${t('unit.cells')}`);
+      if (e.pollution) row(t('inspector.pollution'), `${Math.round(e.pollution.strength * 100)}%`);
     }
     row(t('inspector.road'), b.access ? '✅' : `❌ ${t('inspector.noRoad')}`);
     if (b.powerNeed > 0) row(`${t('inspector.electricity')} (${fmtNumber(b.powerNeed)})`, b.powered ? '✅' : `❌ ${t('inspector.none')}`);
@@ -123,9 +135,30 @@ export class Inspector {
     if (b.incident > 0) row(t('inspector.state'), `🚨 ${t('inspector.robbery')}`);
     if (b.kind === 'zone') row(t('inspector.garbage'), bar(b.garbage / g.config.garbage.cap, false));
     if (b.dead > 0) row(t('inspector.state'), `⚰️ ${t('inspector.dead', { n: b.dead })}`);
+    const ups: HTMLElement[] = [];
+    if (b.kind === 'service') {
+      const d = g.services.require(b.defId);
+      if (d.upgrades?.length) {
+        ups.push(h('h4', { text: t('inspector.upgrades') }));
+        d.upgrades.forEach((u, i) => {
+          const done = !!(b.up & (1 << i));
+          const poor = g.get('economy').money < u.cost;
+          ups.push(
+            h('div', { class: `upg${done ? ' done' : ''}` },
+              h('span', { class: 'upg-ic', text: u.icon }),
+              h('div', { class: 'upg-t' }, h('b', { text: t(`upgrade.${d.id}.${u.id}.name`) }), h('span', { class: 'dim', text: t(`upgrade.${d.id}.${u.id}.desc`) })),
+              done
+                ? h('span', { class: 'upg-ok', text: '✔' })
+                : h('button', { class: `btn sm${poor ? ' poor' : ''}`, text: fmtMoney(u.cost), title: `+${fmtMoney(u.upkeep)}${t('unit.perMonth')}`, onclick: () => { const r = g.builder.upgradeService(b, u.id); if (r.reasonKey) g.message(r.reasonKey, undefined, 'bad'); this.render(); } }),
+            ),
+          );
+        });
+      }
+    }
     this.el.replaceChildren(
       h('div', { class: 'panel-head' }, h('span', { text: `${icon} ${title}` }), h('button', { class: 'btn icon sm', text: '✕', onclick: () => g.bus.emit('select', null) })),
       ...rows,
+      ...ups,
       h('button', { class: 'btn danger', text: t('inspector.demolish'), onclick: () => { g.builder.removeBuilding(b); g.sfx('bulldoze'); g.bus.emit('select', null); } }),
     );
   }

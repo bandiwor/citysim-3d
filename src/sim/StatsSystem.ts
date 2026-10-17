@@ -95,7 +95,7 @@ export class StatsSystem implements System {
 
     const fill = this.jobsTotal > 0 ? Math.min(1, this.workforce / this.jobsTotal) : 0;
     for (const b of list) {
-      b.workers = g.zoneTypes.get(b.zone)?.housing || b.abandoned ? 0 : b.jobs * fill;
+      b.workers = g.zoneTypes.get(b.zone)?.housing || b.abandoned ? 0 : Math.round(b.jobs * fill);
     }
   }
 }

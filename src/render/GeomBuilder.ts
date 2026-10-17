@@ -125,3 +125,8 @@ export class GeomBuilder {
     return merged;
   }
 }
+
+/** Сливает готовые геометрии (все с атрибутами position/normal/uv/color) в одну. */
+export function mergeParts(parts: BufferGeometry[]): BufferGeometry {
+  return mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)), false)!;
+}

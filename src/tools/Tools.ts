@@ -31,8 +31,9 @@ export class SelectTool implements Tool {
     const g = this._game;
     const name = b.kind === 'zone' ? t(`zone.${b.zone}.name`) : t(`service.${b.defId}.name`);
     const z = b.kind === 'zone' ? g.zoneTypes.require(b.zone) : null;
-    const detail = z ? (z.housing ? `👥 ${b.pop}/${b.cap}` : `💼 ${b.workers}/${b.jobs}`) : b.jobs ? `💼 ${b.workers}/${b.jobs}` : '';
-    ctx.setPreview({ hint: `${name}${detail ? ` · ${detail}` : ''}` });
+    const lv = z ? `${'★'.repeat(b.level)} ` : '';
+    const detail = z ? (z.housing ? `👥 ${Math.round(b.pop)}/${Math.round(b.cap)}` : `💼 ${Math.round(b.workers)}/${Math.round(b.jobs)}`) : b.jobs ? `💼 ${Math.round(b.workers)}/${Math.round(b.jobs)}` : '';
+    ctx.setPreview({ hint: `${lv}${name}${detail ? ` · ${detail}` : ''}` });
   }
 }
 
@@ -149,7 +150,7 @@ export class RoadTool implements Tool {
       return ctx.setPreview({ marker, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, quads: [], marks: [], hint: t('hint.roadCtrl') });
     }
     const plan = b.planRoad(this._start, snap, ctrl, this._typeId);
-    let hint = plan.ok ? `${fmtMoney(plan.cost)} · ${Math.round(plan.length)} ${t('unit.meters')}` : t(plan.reasonKey ?? 'err.road.short');
+    let hint = plan.ok ? `${fmtMoney(plan.cost)} · ${Math.round(plan.length)} ${t('unit.meters')}${plan.levelCost ? ` · ⛰️ ${t('hint.autoLevel', { cost: fmtMoney(plan.levelCost) })}` : ''}` : t(plan.reasonKey ?? 'err.road.short');
     if (plan.reasonKey === 'err.terrain') hint += ` · ${t('hint.useTerraform')}`;
     if (plan.reasonKey === 'err.road.building') hint += ` · ${t('hint.bulldozeIt')}`;
     // мешающие здания подсвечиваем красным, места с рельефом/дорогой — метками
@@ -273,9 +274,10 @@ export class PlaceTool implements Tool {
     const res = this._game.builder.canPlaceService(this._defId, s.x, s.z, s.rot);
     const obb = this._game.builder.serviceObb(this._defId, s.x, s.z, s.rot);
     const def = this._game.services.require(this._defId);
+    const lv = res.ok ? this._game.builder.serviceCut(this._defId, s.x, s.z, s.rot).length : 0;
     ctx.setPreview({
       quads: [{ x: s.x, z: s.z, rot: s.rot, w: obb.hw * 2, d: obb.hd * 2, ok: res.ok }],
-      hint: res.ok ? fmtMoney(def.cost) : t(res.reasonKey ?? 'err.occupied'),
+      hint: res.ok ? `${fmtMoney(def.cost)}${lv ? ` · ⛰️ ${t('hint.autoLevel', { cost: fmtMoney(lv * this._game.config.terraform.costPerVertex) })}` : ''}` : t(res.reasonKey ?? 'err.occupied'),
     });
   }
 

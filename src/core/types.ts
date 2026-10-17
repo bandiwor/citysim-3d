@@ -53,6 +53,8 @@ export interface Building {
   stored: number;
   /** >0 — идёт ограбление (секунд до исхода) */
   incident: number;
+  /** маска установленных улучшений службы */
+  up: number;
 }
 
 export interface BusStop {

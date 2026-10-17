@@ -31,7 +31,19 @@ export function collectAmbient(game: Game, view: ListenerView): AmbientState {
     }
   }
   let fires = 0;
-  for (const b of w.list()) if (b.fire > 0) fires++;
+  let alarms = 0;
+  for (const b of w.list()) {
+    if (b.fire > 0) fires++;
+    if (b.incident > 0) alarms++;
+  }
+  const sources: Record<string, number> = {};
+  for (const b of near) {
+    if (b.kind !== 'service') continue;
+    const tag = game.services.require(b.defId).sound;
+    if (!tag) continue;
+    const d = Math.hypot(b.x - view.x, b.z - view.z);
+    sources[tag] = (sources[tag] ?? 0) + (1 - d / HEARD_RADIUS) ** 2;
+  }
   return {
     zoom: view.distance,
     buildingsNear: near.length,
@@ -42,5 +54,7 @@ export function collectAmbient(game: Game, view: ListenerView): AmbientState {
     night: view.night,
     fires,
     speed: game.speed,
+    sources,
+    alarms,
   };
 }

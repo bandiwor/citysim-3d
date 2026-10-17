@@ -1,3 +1,4 @@
+import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 
@@ -76,7 +77,7 @@ export class SanitationSystem implements System {
     const g = this._game;
     for (const b of g.world.list()) {
       if (b.kind !== 'service' || b.abandoned) continue;
-      const d = g.services.require(b.defId);
+      const d = effectiveDef(g.services.require(b.defId), b.up);
       const working = b.powered || d.powerNeed === 0;
       if (!working) continue;
       if (d.waste && d.waste.burn > 0) b.stored = Math.max(0, b.stored - d.waste.burn * dt);
@@ -88,14 +89,14 @@ export class SanitationSystem implements System {
     const g = this._game;
     const gc = g.config.garbage;
     const fleet = g.get('fleet');
-    const facilities = fleet.facilities('garbage').filter((f) => g.services.require(f.defId).waste);
+    const facilities = fleet.facilities('garbage').filter((f) => effectiveDef(g.services.require(f.defId), f.up).waste);
     if (!facilities.length) return;
     const cands = g.world
       .list()
       .filter((b) => b.garbage >= gc.dispatchAt && !this._targeted.has(b.id) && b.access > 0)
       .sort((a, b) => b.garbage - a.garbage);
     for (const target of cands) {
-      const f = fleet.nearest('garbage', target, (x) => x.stored + gc.truckLoad <= g.services.require(x.defId).waste!.capacity);
+      const f = fleet.nearest('garbage', target, (x) => x.stored + gc.truckLoad <= effectiveDef(g.services.require(x.defId), x.up).waste!.capacity);
       if (!f) continue;
       this._targeted.add(target.id);
       let carried = 0;
@@ -105,7 +106,7 @@ export class SanitationSystem implements System {
           target.garbage -= carried;
         },
         onReturn: () => {
-          f.stored = Math.min(g.services.require(f.defId).waste!.capacity, f.stored + carried);
+          f.stored = Math.min(effectiveDef(g.services.require(f.defId), f.up).waste!.capacity, f.stored + carried);
           this._targeted.delete(target.id);
         },
         onFail: () => {
@@ -127,7 +128,7 @@ export class SanitationSystem implements System {
       .filter((b) => b.dead >= 1 && !this._targeted.has(b.id) && b.access > 0)
       .sort((a, b) => b.dead - a.dead);
     for (const target of cands) {
-      const f = fleet.nearest('hearse', target, (x) => x.stored + dc.hearseLoad <= (g.services.require(x.defId).morgue?.capacity ?? 0));
+      const f = fleet.nearest('hearse', target, (x) => x.stored + dc.hearseLoad <= (effectiveDef(g.services.require(x.defId), x.up).morgue?.capacity ?? 0));
       if (!f) continue;
       this._targeted.add(target.id);
       let carried = 0;
@@ -137,7 +138,7 @@ export class SanitationSystem implements System {
           target.dead -= carried;
         },
         onReturn: () => {
-          f.stored = Math.min(g.services.require(f.defId).morgue!.capacity, f.stored + carried);
+          f.stored = Math.min(effectiveDef(g.services.require(f.defId), f.up).morgue!.capacity, f.stored + carried);
           this._targeted.delete(target.id);
         },
         onFail: () => {
@@ -164,7 +165,7 @@ export class SanitationSystem implements System {
       if (b.garbage > cap * g.config.garbage.unhappyAt) over++;
       dead += b.dead;
       if (b.kind === 'service') {
-        const d = g.services.require(b.defId);
+        const d = effectiveDef(g.services.require(b.defId), b.up);
         if (d.waste) {
           wasteCap += d.waste.capacity;
           wasteUsed += b.stored;

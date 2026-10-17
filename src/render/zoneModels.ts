@@ -1,6 +1,6 @@
-import type { BufferGeometry } from 'three';
+import type { BufferGeometry, Box3 } from 'three';
 import { Rng } from '../core/Rng';
-import { GeomBuilder } from './GeomBuilder';
+import { GeomBuilder, mergeParts } from './GeomBuilder';
 
 const FLOOR = 3;
 const W = 0xffffff;
@@ -310,16 +310,83 @@ const IND: Maker[][] = [
 
 const TABLE: Record<string, Maker[][]> = { res: RES, com: COM, ind: IND };
 
-/** Геометрия здания зоны: по 6 разных построек на каждый уровень. Новые зоны без модели рисуются как простая коробка. */
+/** Отделок на проект: простой, с деталями, с другими деталями. */
+const DECORS = 3;
+
+/** Детали поверх базовой постройки: размещаются по габаритному ящику готовой геометрии (крыша, фасад +Z). */
+function decorate(zone: string, level: number, deco: number, r: Rng, box: Box3, b: GeomBuilder): void {
+  const top = box.max.y;
+  const fz = box.max.z;
+  const hx = (box.max.x - box.min.x) / 2;
+  const cx = (box.max.x + box.min.x) / 2;
+  const roof = (x: number, z: number): [number, number] => [cx + x * hx, z * ((box.max.z - box.min.z) / 2)];
+  if (zone === 'res') {
+    if (deco === 1) {
+      if (level === 1) {
+        // палисадник: низкая ограда и кусты, у дома — машина
+        b.box(hx * 2 + 1.2, 0.7, 0.1, cx, 0, fz + 1.4, 0xcfc6b0).sphere(0.5, cx - hx * 0.7, 0, fz + 1.0, 0x4a9f4f).sphere(0.45, cx + hx * 0.6, 0, fz + 1.0, 0x5aae5a);
+        b.box(1.5, 0.5, 0.8, cx + hx + 1.4, 0.2, fz - 1.4, 0x5a7ea8);
+      } else {
+        // крыша: бак, антенна и кондиционеры
+        const [x, z] = roof(-0.4, -0.3);
+        b.cylinder(0.9, 0.9, 1.5, x, top, z, 0x8f959b, 8).cylinder(0.05, 0.05, 2.6, cx + hx * 0.5, top, z, 0xcfcfcf, 4);
+        for (let i = 0; i < 3; i++) b.box(0.8, 0.6, 0.6, cx - hx * 0.6 + i * 1.1, top, fz * 0.3, 0xd9dde0);
+      }
+    } else if (deco === 2) {
+      if (level === 1) {
+        // солнечные панели на крыше и крыльцо
+        b.box(hx * 1.2, 0.12, 1.6, cx, top - 0.6, 0.2, 0x1f3f8a, { rx: -0.5 }).box(2.2, 0.35, 1.0, cx, 0, fz + 0.5, 0xb89a72);
+      } else {
+        // балконы по фасаду и зелень на крыше
+        const floors = Math.max(2, Math.round(top / 3));
+        for (let f = 1; f < floors; f++) b.box(hx * 1.6, 0.18, 0.9, cx, f * 3 - 0.1, fz + 0.4, 0xbfc3c8).box(hx * 1.6, 0.8, 0.06, cx, f * 3, fz + 0.85, 0x8a929a);
+        b.box(hx * 1.2, 0.3, 1.8, cx, top, -0.4, 0x5aae5a);
+      }
+    }
+  } else if (zone === 'com') {
+    if (deco === 1) {
+      // козырёк и вывеска над входом
+      b.box(hx * 1.4, 0.2, 1.4, cx, 2.6, fz + 0.7, 0xc0392b).box(hx * 1.1, 0.7, 0.15, cx, 3.0, fz + 0.1, [0x2f7fd0, 0xd0a02f, 0x2fa05f, 0xb02fa0][Math.floor(r.next() * 4)]);
+      if (level > 1) b.box(0.8, 0.6, 0.6, cx - hx * 0.5, top, 0, 0xd9dde0).box(0.8, 0.6, 0.6, cx + hx * 0.4, top, 0.8, 0xd9dde0);
+    } else if (deco === 2) {
+      // неоновая вывеска на крыше и парапет
+      b.box(hx * 1.3, 1.1, 0.2, cx, top + 0.3, fz * 0.5, [0xff3d7f, 0x3dd5ff, 0xffd23d][Math.floor(r.next() * 3)]).cylinder(0.08, 0.08, 1.6, cx - hx * 0.5, top, fz * 0.5, 0x555b61, 4).cylinder(0.08, 0.08, 1.6, cx + hx * 0.5, top, fz * 0.5, 0x555b61, 4);
+      if (level === 1) b.box(hx * 1.8, 0.3, 0.2, cx, 2.9, fz + 0.2, 0xffffff);
+    }
+  } else if (zone === 'ind') {
+    if (deco === 1) {
+      // дымоход, трубы и бак
+      b.cylinder(0.7, 0.9, 7, cx + hx * 0.6, top, -1, 0x9a4a3a, 8).box(0.4, 0.4, hx, cx - hx * 0.3, top + 0.4, 0, 0x6e747a).cylinder(1.4, 1.4, 2.4, cx - hx * 0.7, 0, fz + 1.4, 0xb9bfc6, 10);
+    } else if (deco === 2) {
+      // контейнеры и кран-балка
+      const cols = [0xc0392b, 0x2f7fd0, 0xd0a02f, 0x2fa05f];
+      for (let i = 0; i < 3; i++) b.box(2.4, 1.2, 1.1, cx + hx + 1.8, i % 2 * 1.2, fz - 2 - i * 1.2, cols[(i + level) % 4]);
+      b.box(0.3, 4.4, 0.3, cx - hx - 0.8, 0, fz + 0.4, 0x8a8f96).box(hx * 2 + 1.2, 0.3, 0.3, cx, 4.2, fz + 0.4, 0x8a8f96);
+    }
+  }
+}
+
+/**
+ * Геометрия здания зоны: 6 проектов на уровень × 3 отделки (простая, с деталями, с другими деталями) = 18 вариантов.
+ * Новые зоны без модели рисуются как простая коробка.
+ */
 export function zoneModel(zone: string, level: number, variant: number): BufferGeometry {
   const levels = TABLE[zone];
   const makers = levels?.[Math.min(level, levels.length) - 1];
   const b = new GeomBuilder();
   if (!makers) return b.box(6, 4 * level, 6, 0, 0, 0, W, { windows: true }).build();
-  const v = ((variant % makers.length) + makers.length) % makers.length;
-  makers[v](b, new Rng(zone.charCodeAt(0) * 1000 + level * 37 + v * 7919));
-  return b.build();
+  const n = ((variant % (makers.length * DECORS)) + makers.length * DECORS) % (makers.length * DECORS);
+  const v = n % makers.length;
+  const deco = Math.floor(n / makers.length);
+  const seed = zone.charCodeAt(0) * 1000 + level * 37 + v * 7919 + deco * 104729;
+  makers[v](b, new Rng(seed));
+  const base = b.build();
+  if (deco === 0) return base;
+  base.computeBoundingBox();
+  const extra = new GeomBuilder();
+  decorate(zone, level, deco, new Rng(seed + 1), base.boundingBox!, extra);
+  return mergeParts([base, extra.build()]);
 }
 
 /** Сколько вариантов внешнего вида есть у уровня зоны. */
-export const zoneVariantCount = (zone: string, level: number): number => TABLE[zone]?.[level - 1]?.length ?? 1;
+export const zoneVariantCount = (zone: string, level: number): number => (TABLE[zone]?.[level - 1]?.length ?? 1) * DECORS;

@@ -1,5 +1,7 @@
+import { effectiveDef } from '../data/services';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
+import { t } from '../i18n';
 import type { Building } from '../core/types';
 import { bezier2, dist, obbDist, obbOverlap, pointAtLength, polyDistToObb, polyLength, resample, segIntersect, yawOf, type Obb, type Vec2 } from '../world/geometry';
 import type { RoadEdge, RoadNode } from '../world/RoadGraph';
@@ -47,6 +49,9 @@ export interface RoadPlan extends PlaceResult {
   end: RoadSnap;
   crossings: RoadCrossing[];
   blockers: RoadBlocker[];
+  /** вершины рельефа, которые будут срезаны под дорогу (автовыравнивание) */
+  level?: number[];
+  levelCost?: number;
 }
 
 export interface ServiceSpot {
@@ -124,6 +129,7 @@ export class Builder {
 
     // рельеф и границы
     let waterLen = 0;
+    const hillSamples: Vec2[] = [];
     const cum: number[] = [0];
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
@@ -134,7 +140,10 @@ export class Builder {
         const sx = p.x - tan.z * hw * side;
         const sz = p.z + tan.x * hw * side;
         const t = world.terrainAt(sx, sz);
-        if (t === Terrain.Blocked) block('terrain', sx, sz, 'err.terrain');
+        if (t === Terrain.Blocked) {
+          block('terrain', sx, sz, 'err.terrain');
+          hillSamples.push({ x: sx, z: sz });
+        }
         if (t === Terrain.Water && side === 0 && i > 0) waterLen += cum[i] - cum[i - 1];
       }
     }
@@ -181,13 +190,72 @@ export class Builder {
       }
     }
 
+    // холмы не мешают: рельеф срезается автоматически (за деньги), если других помех нет
+    let level: number[] | undefined;
+    if (cfg.terraform.autoLevel && reasons.size === 1 && reasons.has('err.terrain') && hillSamples.length) {
+      level = this.levelVertices(hillSamples);
+      if (level.length) reasons.clear();
+      else level = undefined;
+    }
+
     if (reasons.size) {
       const order = ['err.bounds', 'err.terrain', 'err.road.building', 'err.road.angle', 'err.road.close'];
       return { ...plan, ok: false, reasonKey: order.find((k) => reasons.has(k)), blockers, crossings };
     }
 
     const cost = (length / cfg.roads.costUnit) * type.cost + (waterLen / cfg.roads.costUnit) * type.cost * (cfg.roads.bridgeCostMul - 1);
-    return { ...plan, ok: true, cost, crossings };
+    const levelCost = level ? level.length * cfg.terraform.costPerVertex : 0;
+    return { ...plan, ok: true, cost: cost + levelCost, crossings, level, levelCost, blockers: level ? blockers : [] };
+  }
+
+  /** Вершины рельефа четырёх углов каждой клетки, в которую попали точки на холме. */
+  levelVertices(samples: Vec2[]): number[] {
+    const w = this._game.world;
+    const n1 = w.size + 1;
+    const set = new Set<number>();
+    for (const p of samples) {
+      const ci = Math.min(w.size - 1, Math.max(0, Math.floor(p.x / CELL)));
+      const cj = Math.min(w.size - 1, Math.max(0, Math.floor(p.z / CELL)));
+      for (let dj = 0; dj <= 1; dj++) for (let di = 0; di <= 1; di++) set.add((cj + dj) * n1 + ci + di);
+    }
+    return [...set].filter((k) => w.heights[k] > this._cfg.world.flatEpsilon);
+  }
+
+  /** Срезает рельеф: выбранные вершины становятся ровными, соседи плавно спускаются (край без обрыва). */
+  applyLevel(verts: number[]): void {
+    if (!verts.length) return;
+    const game = this._game;
+    const w = game.world;
+    const n1 = w.size + 1;
+    const eps = this._cfg.world.flatEpsilon;
+    const own = new Set(verts);
+    let i0 = Infinity;
+    let j0 = Infinity;
+    let i1 = -Infinity;
+    let j1 = -Infinity;
+    const touch = (i: number, j: number, h: number): void => {
+      w.setVertexHeight(i, j, h);
+      i0 = Math.min(i0, i);
+      i1 = Math.max(i1, i);
+      j0 = Math.min(j0, j);
+      j1 = Math.max(j1, j);
+    };
+    for (const k of verts) touch(k % n1, Math.floor(k / n1), 0);
+    for (const k of verts) {
+      const i = k % n1;
+      const j = Math.floor(k / n1);
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = i + di;
+        const nj = j + dj;
+        if (ni < 1 || nj < 1 || ni >= w.size || nj >= w.size) continue;
+        const nk = nj * n1 + ni;
+        if (own.has(nk) || w.heights[nk] <= eps) continue;
+        touch(ni, nj, w.heights[nk] * 0.5);
+        own.add(nk);
+      }
+    }
+    w.reclassify(i0, j0, i1, j1);
+    game.bus.emit('terrain:changed');
   }
 
   /** Строит дорогу по плану: узлы, рёбра, пересечения, клетки зонирования. */
@@ -198,6 +266,10 @@ export class Builder {
     const cfg = this._cfg;
     const type = game.roadTypes.require(plan.typeId);
     if (!game.get('economy').spend(plan.cost)) return fail('err.money');
+    if (plan.level?.length) {
+      this.applyLevel(plan.level);
+      game.sfx('terraform');
+    }
     const graph = world.graph;
 
     const nodeFor = (snap: RoadSnap): RoadNode => {
@@ -334,6 +406,20 @@ export class Builder {
     return { x: hit.x + ox * off, z: hit.z + oz * off, rot: yawOf(-ox, -oz), snapped: true };
   }
 
+  /** Вершины рельефа, которые придётся срезать под основание службы. */
+  serviceCut(defId: string, x: number, z: number, rot: number): number[] {
+    const world = this._game.world;
+    if (!this._cfg.terraform.autoLevel) return [];
+    const o = this.serviceObb(defId, x, z, rot);
+    const c = Math.cos(o.rot);
+    const s = Math.sin(o.rot);
+    const pts: Vec2[] = [];
+    for (let u = -o.hw; u <= o.hw + 0.01; u += CELL / 2) {
+      for (let v = -o.hd; v <= o.hd + 0.01; v += CELL / 2) pts.push({ x: o.x + c * u + s * v, z: o.z - s * u + c * v });
+    }
+    return this.levelVertices(pts.filter((p) => world.terrainAt(p.x, p.z) === Terrain.Blocked));
+  }
+
   canPlaceService(defId: string, x: number, z: number, rot: number): PlaceResult {
     const game = this._game;
     const world = game.world;
@@ -341,7 +427,8 @@ export class Builder {
     const obb = this.serviceObb(defId, x, z, rot);
     const reach = Math.max(obb.hw, obb.hd) + 20;
     if (!world.inBounds(x, z, this._cfg.world.edgeMargin)) return fail('err.bounds');
-    if (world.footprintTerrain(obb) !== Terrain.Land) return fail('err.terrain');
+    const ft = world.footprintTerrain(obb);
+    if (ft === Terrain.Water || (ft === Terrain.Blocked && !this._cfg.terraform.autoLevel)) return fail('err.terrain');
     for (const e of world.graph.edgesNear(x, z, reach)) {
       if (polyDistToObb(e.pts, obb) < e.hw + 0.2) return fail('err.occupied');
     }
@@ -360,7 +447,9 @@ export class Builder {
     const def = game.services.require(defId);
     const check = this.canPlaceService(defId, x, z, rot);
     if (!check.ok) return check;
-    if (!game.get('economy').spend(def.cost)) return fail('err.money');
+    const level = this.serviceCut(defId, x, z, rot);
+    if (!game.get('economy').spend(def.cost + level.length * this._cfg.terraform.costPerVertex)) return fail('err.money');
+    if (level.length) this.applyLevel(level);
     const b = this.createBuilding('service', defId, x, z, rot, def.size[0] * CELL, def.size[1] * CELL);
     // убираем пустые клетки зонирования под зданием
     const obb = this.serviceObb(defId, x, z, rot);
@@ -370,6 +459,35 @@ export class Builder {
     this.addBuilding(b);
     game.bus.emit('zones:changed');
     game.sfx('build');
+    return { ok: true };
+  }
+
+  /** Уровень службы: 1 + число улучшений. */
+  serviceLevel(b: Building): { level: number; max: number } {
+    const d = this._game.services.require(b.defId);
+    const n = d.upgrades?.length ?? 0;
+    let have = 0;
+    for (let i = 0; i < n; i++) if (b.up & (1 << i)) have++;
+    return { level: 1 + have, max: 1 + n };
+  }
+
+  /** Купить улучшение службы: меняет характеристики и внешний вид. */
+  upgradeService(b: Building, upgradeId: string): PlaceResult {
+    const game = this._game;
+    if (b.kind !== 'service') return fail('err.upgrade.none');
+    const def = game.services.require(b.defId);
+    const i = (def.upgrades ?? []).findIndex((u) => u.id === upgradeId);
+    if (i < 0) return fail('err.upgrade.none');
+    if (b.up & (1 << i)) return fail('err.upgrade.done');
+    const u = def.upgrades![i];
+    if (!game.get('economy').spend(u.cost)) return fail('err.money');
+    b.up |= 1 << i;
+    this.applyStats(b);
+    this.updateAccess(b);
+    game.bus.emit('building:updated', b);
+    game.bus.emit('economy:changed');
+    game.sfx('levelup');
+    game.message('msg.upgraded', { name: t(`upgrade.${def.id}.${u.id}.name`) }, 'good');
     return { ok: true };
   }
 
@@ -617,6 +735,7 @@ export class Builder {
       dead: 0,
       stored: 0,
       incident: 0,
+      up: 0,
     };
     this.applyStats(b);
     return b;
@@ -633,7 +752,7 @@ export class Builder {
       b.powerNeed = lv.capacity * z.powerPer;
       b.waterNeed = lv.capacity * z.waterPer;
     } else {
-      const d = g.services.require(b.defId);
+      const d = effectiveDef(g.services.require(b.defId), b.up);
       b.jobs = d.jobs;
       b.powerNeed = d.powerNeed;
       b.waterNeed = d.waterNeed;

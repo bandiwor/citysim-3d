@@ -1,7 +1,7 @@
 import { BufferGeometry } from 'three';
 import { Rng } from '../core/Rng';
 import { CELL } from '../world/World';
-import { GeomBuilder } from './GeomBuilder';
+import { GeomBuilder, mergeParts } from './GeomBuilder';
 
 type ModelFactory = (rng: Rng) => BufferGeometry;
 
@@ -10,6 +10,9 @@ type ModelFactory = (rng: Rng) => BufferGeometry;
  * зарегистрируйте фабрику: `serviceModels.set('mykey', () => ...)` и укажите `model: 'mykey'` в ServiceDef.
  */
 export const serviceModels = new Map<string, ModelFactory>();
+
+/** Детали улучшений: ключ `<модель>.<id улучшения>`; добавляются к базовой модели при покупке. */
+export const upgradeParts = new Map<string, (b: GeomBuilder) => void>();
 
 export { zoneModel, zoneVariantCount } from './zoneModels';
 
@@ -108,10 +111,8 @@ serviceModels.set('coal', () =>
     .build(),
 );
 serviceModels.set('wind', () => {
-  const b = new GeomBuilder().cylinder(0.3, 0.55, 15, 0, 0, 0, 0xf2f4f6, 8).box(1.8, 0.9, 0.9, 0.3, 15, 0, 0xe0e4e8);
-  for (let k = 0; k < 3; k++) b.box(0.18, 6.4, 0.5, 1.3, 15.45, 0, 0xffffff, { rx: (k * Math.PI * 2) / 3 + 0.4 });
-  // лопасти смещены от центра ступицы
-  return b.build();
+  // лопасти — отдельная анимированная часть (render/animations.ts)
+  return new GeomBuilder().cylinder(0.3, 0.55, 15, 0, 0, 0, 0xf2f4f6, 8).box(1.8, 0.9, 0.9, 0.3, 15, 0, 0xe0e4e8).sphere(0.45, 1.3, 15, 0, 0xcfd4d9).build();
 });
 serviceModels.set('solar', () => {
   const b = new GeomBuilder().box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0x8d9296);
@@ -183,10 +184,24 @@ serviceModels.set('busdepot', () =>
 );
 
 /** Геометрия службы по ключу модели (fallback — серая коробка). */
-export function serviceModel(key: string, w: number, h: number): BufferGeometry {
+export function serviceModel(key: string, w: number, h: number, upgrades: string[] = []): BufferGeometry {
   const f = serviceModels.get(key);
-  if (f) return f(new Rng(1));
-  return new GeomBuilder().box(w * CELL - 1, 4, h * CELL - 1, 0, 0, 0, 0xb0b4b8).build();
+  if (!upgrades.length) return f ? f(new Rng(1)) : new GeomBuilder().box(w * CELL - 1, 4, h * CELL - 1, 0, 0, 0, 0xb0b4b8).build();
+  // базовая модель + детали улучшений в одной геометрии
+  const parts: BufferGeometry[] = [];
+  const base = f ? f(new Rng(1)) : new GeomBuilder().box(w * CELL - 1, 4, h * CELL - 1, 0, 0, 0, 0xb0b4b8).build();
+  parts.push(base);
+  const extra = new GeomBuilder();
+  let any = false;
+  for (const id of upgrades) {
+    const part = upgradeParts.get(`${key}.${id}`);
+    if (part) {
+      part(extra);
+      any = true;
+    }
+  }
+  if (any) parts.push(extra.build());
+  return parts.length === 1 ? base : mergeParts(parts);
 }
 
 // ---------------- транспорт и деревья ----------------

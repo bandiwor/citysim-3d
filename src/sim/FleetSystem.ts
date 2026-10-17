@@ -1,3 +1,4 @@
+import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building } from '../core/types';
@@ -51,7 +52,7 @@ export class FleetSystem implements System {
   }
 
   free(facility: Building): number {
-    const cap = this._game.services.require(facility.defId).fleet?.count ?? 0;
+    const cap = effectiveDef(this._game.services.require(facility.defId), facility.up).fleet?.count ?? 0;
     return cap - (this._out.get(facility.id) ?? 0);
   }
 
@@ -77,7 +78,7 @@ export class FleetSystem implements System {
   /** Отправляет машину из facility к target и обратно. false — сразу невозможно. */
   launch(facility: Building, target: Building, color: number, hooks: MissionHooks = {}): boolean {
     const g = this._game;
-    const def = g.services.require(facility.defId);
+    const def = effectiveDef(g.services.require(facility.defId), facility.up);
     if (!def.fleet || this.free(facility) <= 0 || !facility.access || !target.access || facility.comp !== target.comp) return false;
     const mission: Mission = { facility: facility.id, hooks, vehicle: null, done: false };
     this._out.set(facility.id, (this._out.get(facility.id) ?? 0) + 1);

@@ -696,3 +696,39 @@ input[type='range'] {
 .fp-mode .cursor-hint {
   display: none !important;
 }
+
+/* Улучшения зданий */
+.inspector {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+.stars {
+  color: #ffd24d;
+  letter-spacing: 1px;
+}
+.upg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.upg.done {
+  opacity: 0.7;
+}
+.upg-ic {
+  font-size: 20px;
+}
+.upg-t {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+.upg-ok {
+  color: var(--good);
+  font-size: 18px;
+}
+.btn.poor {
+  color: var(--bad);
+}

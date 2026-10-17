@@ -120,4 +120,18 @@ export function registerOverlays(g: Game): void {
       paintBuilding(game, p, (b) => (b.kind === 'zone' ? goodBad(1 - Math.min(1, rate.rateOf(b) / (game.config.crime.baseRate * 3)), 190) : null));
     },
   });
+  g.overlays.add({
+    id: 'level',
+    icon: '⭐',
+    paint(game, p) {
+      paintBuilding(game, p, (b) => {
+        if (b.kind === 'zone') {
+          const max = game.zoneTypes.require(b.zone).levels.length;
+          return goodBad((b.level - 1) / Math.max(1, max - 1), 200);
+        }
+        const lv = game.builder.serviceLevel(b);
+        return lv.max > 1 ? goodBad((lv.level - 1) / (lv.max - 1), 200) : null;
+      });
+    },
+  });
 }

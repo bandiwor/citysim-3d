@@ -25,7 +25,7 @@ export class AudioEngine {
   private _vol: Record<AudioChannel, number>;
   private _noise!: { white: AudioBuffer; pink: AudioBuffer; brown: AudioBuffer };
   private _last = new Map<string, number>();
-  private _timers = { clank: 0, bird: 0, chord: 0, horn: 0 };
+  private _timers = { clank: 0, bird: 0, chord: 0, horn: 0, gull: 0, kids: 0 };
   private _targets = {} as Record<AmbientLayer, number>;
   private _chord = 0;
   private _offs: (() => void)[] = [];
@@ -240,6 +240,39 @@ export class AudioEngine {
     wa.out.connect(waG).connect(water);
     this._lfo(0.4, 0.3, waG.gain);
 
+    // ветряки: ритмичный шорох лопастей
+    const turbine = layerGain('turbine');
+    const tu = this._filtered('pink', 'bandpass', 380, 0.9);
+    const tuG = ctx.createGain();
+    tuG.gain.value = 0.35;
+    tu.out.connect(tuG).connect(turbine);
+    this._lfo(0.85, 0.3, tuG.gain);
+
+    // механизмы: низкий гул с дребезгом
+    const machinery = layerGain('machinery');
+    const mh = this._filtered('brown', 'lowpass', 260);
+    mh.out.connect(machinery);
+    const mo = ctx.createOscillator();
+    const mg = ctx.createGain();
+    mo.type = 'sawtooth';
+    mo.frequency.value = 96;
+    mg.gain.value = 0.03;
+    mo.connect(mg).connect(machinery);
+    mo.start();
+    this._lfo(9, 0.015, mg.gain);
+
+    // фонтан: шипение воды
+    const fountain = layerGain('fountain');
+    const fo = this._filtered('white', 'highpass', 2600, 0.5);
+    const foG = ctx.createGain();
+    foG.gain.value = 0.18;
+    fo.out.connect(foG).connect(fountain);
+    this._lfo(0.6, 0.05, foG.gain);
+
+    // чайки и детские голоса — по таймерам
+    layerGain('gulls');
+    layerGain('kids');
+
     // сирена (пожар)
     const siren = layerGain('siren');
     const so = ctx.createOscillator();
@@ -270,6 +303,8 @@ export class AudioEngine {
     this._timers.bird -= dt;
     this._timers.chord -= dt;
     this._timers.horn -= dt;
+    this._timers.gull -= dt;
+    this._timers.kids -= dt;
     if (this._timers.clank <= 0) {
       this._timers.clank = 0.7 + Math.random() * 1.8;
       if (mix.industry > 0.06 && !paused) this._clank(mix.industry);
@@ -277,6 +312,14 @@ export class AudioEngine {
     if (this._timers.bird <= 0) {
       this._timers.bird = 1.2 + Math.random() * 3.5;
       if (mix.birds > 0.06 && !paused) this._chirp(mix.birds);
+    }
+    if (this._timers.gull <= 0) {
+      this._timers.gull = 2.5 + Math.random() * 4;
+      if (mix.gulls > 0.06 && !paused) this._gull(mix.gulls);
+    }
+    if (this._timers.kids <= 0) {
+      this._timers.kids = 0.5 + Math.random() * 1.6;
+      if (mix.kids > 0.06 && !paused) this._kids(mix.kids);
     }
     if (this._timers.horn <= 0) {
       this._timers.horn = 3 + Math.random() * 7;
@@ -336,6 +379,20 @@ export class AudioEngine {
     const base = 2200 + Math.random() * 1800;
     const n = 2 + Math.floor(Math.random() * 3);
     for (let i = 0; i < n; i++) this._tone(bus, { freq: base, to: base * (1.2 + Math.random() * 0.4), dur: 0.07, vol: 0.05 * level, delay: i * 0.1 });
+  }
+
+  private _gull(level: number): void {
+    const bus = this._buses.ambient;
+    const f = 900 + Math.random() * 300;
+    this._tone(bus, { freq: f, to: f * 1.6, dur: 0.22, type: 'sawtooth', vol: 0.025 * level });
+    this._tone(bus, { freq: f * 1.5, to: f * 0.9, dur: 0.3, type: 'sawtooth', vol: 0.025 * level, delay: 0.22 });
+  }
+
+  private _kids(level: number): void {
+    const bus = this._buses.ambient;
+    const base = 900 + Math.random() * 900;
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) this._tone(bus, { freq: base * (1 + Math.random() * 0.4), to: base * 1.3, dur: 0.09, vol: 0.035 * level, delay: i * 0.08, type: 'triangle' });
   }
 
   private _horn(level: number): void {

@@ -56,6 +56,7 @@ interface SavedBuilding {
   ga?: number;
   de?: number;
   st?: number;
+  up?: number;
 }
 
 interface SavedRoute {
@@ -133,7 +134,7 @@ export class SaveSystem implements System {
       cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone) })),
       stops: w.stops.map((s) => ({ id: s.id, x: r1(s.x), z: r1(s.z) })),
       routes: g.get('transit').routes.map((r) => ({ id: r.id, color: r.color, stops: [...r.stops], buses: r.buses, carried: r.carried })),
-      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored) })),
+      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}) })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
       terrain: [...w.terrainEdits].map(([k, h]) => [k, Math.round(h * 100) / 100] as [number, number]),
     };
@@ -190,6 +191,7 @@ export class SaveSystem implements System {
       b.id = s.id;
       b.level = s.l;
       b.variant = s.v;
+      b.up = s.up ?? 0;
       g.builder.applyStats(b);
       b.pop = Math.min(s.p, b.cap);
       b.goods = s.g;

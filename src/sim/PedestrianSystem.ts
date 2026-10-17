@@ -1,6 +1,7 @@
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import { Rng } from '../core/Rng';
+import { lookOf } from './looks';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -16,7 +17,8 @@ export interface Walker {
   /** сторона тротуара ±1 */
   side: 1 | -1;
   speed: number;
-  color: number;
+  /** зерно внешности (см. looks.ts) */
+  seed: number;
   x: number;
   z: number;
   yaw: number;
@@ -89,18 +91,20 @@ export class PedestrianSystem implements System {
     const hit = g.world.graph.nearest(fx + Math.cos(a) * r, fz + Math.sin(a) * r, 30, (e) => e.type >= 0 && g.roadTypes.at(e.type).sidewalk > 0 && !e.bridge);
     if (!hit) return;
     const e = hit.edge;
+    const seed = Math.floor(rng.next() * 0x7fffffff);
     const w: Walker = {
       edge: e.id,
       s: Math.min(e.len, Math.max(0, hit.s ?? 0)),
       dir: rng.next() < 0.5 ? 1 : -1,
       side: rng.next() < 0.5 ? 1 : -1,
-      speed: c.speed[0] + rng.next() * (c.speed[1] - c.speed[0]),
-      color: PALETTE[Math.floor(rng.next() * PALETTE.length)],
+      speed: 0,
+      seed,
       x: hit.x,
       z: hit.z,
       yaw: 0,
       phase: rng.next() * 10,
     };
+    w.speed = (c.speed[0] + rng.next() * (c.speed[1] - c.speed[0])) * lookOf(seed).speed;
     this._place(w);
     this.walkers.push(w);
   }
@@ -143,18 +147,16 @@ export class PedestrianSystem implements System {
   }
 
   /** Ожидающие на остановках (для отрисовки): координаты и число людей. */
-  waiting(): { x: number; z: number; n: number }[] {
+  waiting(): { id: number; x: number; z: number; n: number }[] {
     const f = this.focus;
     const tr = this._game.get('transit');
-    const out: { x: number; z: number; n: number }[] = [];
+    const out: { id: number; x: number; z: number; n: number }[] = [];
     if (!f) return out;
     for (const s of tr.stops) {
       if (Math.hypot(s.x - f.x, s.z - f.z) > this._game.config.pedestrians.radius) continue;
       const n = Math.min(8, Math.ceil(tr.waitingAt(s.id) / 4));
-      if (n) out.push({ x: s.x, z: s.z, n });
+      if (n) out.push({ id: s.id, x: s.x, z: s.z, n });
     }
     return out;
   }
 }
-
-const PALETTE = [0xc8553d, 0x3d7ec8, 0x4fa36a, 0xd8b04a, 0x8a5bb0, 0x2e2e36, 0xe0e0e0, 0xd07a9a, 0x5a6a7a];

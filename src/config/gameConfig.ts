@@ -32,7 +32,7 @@ export const defaultConfig = {
     /** секунд на игровой день при скорости ×1 */
     dayLength: 2.5,
     /** секунд на полные сутки (день/ночь) */
-    todLength: 110,
+    todLength: 420,
     startTod: 0.42,
     startYear: 2025,
     daysPerMonth: 30,
@@ -107,6 +107,8 @@ export const defaultConfig = {
     protect: 8,
     minHeight: -6,
     maxHeight: 40,
+    /** при постройке дороги/здания на холме рельеф срезается автоматически */
+    autoLevel: true,
   },
   zoning: {
     /** глубина зоны в рядах клеток */
@@ -352,7 +354,7 @@ export const defaultConfig = {
     treeLimit: 9000,
     alertLimit: 70,
     /** число вариантов внешнего вида на уровень зоны */
-    zoneVariants: 6,
+    zoneVariants: 18,
   },
   audio: {
     master: 0.8,

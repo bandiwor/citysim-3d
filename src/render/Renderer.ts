@@ -13,6 +13,7 @@ import {
 } from 'three';
 import type { Game } from '../core/Game';
 import { clamp, smoothstep } from '../core/Rng';
+import { AnimatedBuildingsView } from './animations';
 import { AlertView } from './AlertView';
 import { BuildingView } from './BuildingView';
 import { CameraController } from './CameraController';
@@ -86,6 +87,7 @@ export class Renderer {
       this.zoneLayer,
       new OverlayView(this.scene, _game),
       this.buildings,
+      new AnimatedBuildingsView(this.scene, _game),
       new TreeView(this.scene, _game),
       new TrafficLightView(this.scene, _game),
       new VehicleView(this.scene, _game),
