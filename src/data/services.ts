@@ -1,0 +1,50 @@
+import type { Indexed } from '../core/Registry';
+
+/** Группа финансирования службы (ползунок в бюджете). */
+export type FundingGroup = 'police' | 'fire' | 'health' | 'education' | 'parks' | 'utilities';
+
+export interface ServiceDef extends Indexed {
+  name: string;
+  desc: string;
+  icon: string;
+  /** категория на панели инструментов */
+  category: string;
+  size: [number, number];
+  cost: number;
+  upkeep: number;
+  jobs: number;
+  powerNeed: number;
+  waterNeed: number;
+  fundingGroup: FundingGroup;
+  needsRoad: boolean;
+  /** производит ресурсы */
+  provides?: { power?: number; water?: number };
+  /** покрытие: имя карты (police, fire, health, education, park…), радиус в клетках и сила */
+  coverage?: { type: string; radius: number; strength: number };
+  /** загрязнение вокруг, радиус в клетках */
+  pollution?: { radius: number; strength: number };
+  /** ключ процедурной модели в render/models.ts */
+  model: string;
+}
+
+export const SERVICES: ServiceDef[] = [
+  // Энергия
+  { id: 'coal', index: 0, name: 'Угольная ТЭС', desc: 'Много энергии, но сильно загрязняет окружающую среду.', icon: '🏭', category: 'power', size: [3, 3], cost: 14000, upkeep: 380, jobs: 30, powerNeed: 0, waterNeed: 10, fundingGroup: 'utilities', needsRoad: true, provides: { power: 700 }, pollution: { radius: 10, strength: 1 }, model: 'coal' },
+  { id: 'wind', index: 0, name: 'Ветрогенератор', desc: 'Чистая энергия, но мало.', icon: '🌬️', category: 'power', size: [1, 1], cost: 2600, upkeep: 24, jobs: 1, powerNeed: 0, waterNeed: 0, fundingGroup: 'utilities', needsRoad: true, provides: { power: 70 }, model: 'wind' },
+  { id: 'solar', index: 0, name: 'Солнечная станция', desc: 'Чистая энергия среднего масштаба.', icon: '☀️', category: 'power', size: [2, 2], cost: 8500, upkeep: 60, jobs: 4, powerNeed: 0, waterNeed: 0, fundingGroup: 'utilities', needsRoad: true, provides: { power: 220 }, model: 'solar' },
+  // Вода
+  { id: 'watertower', index: 0, name: 'Водонапорная башня', desc: 'Подаёт воду жителям подключённой сети дорог.', icon: '🚰', category: 'power', size: [1, 1], cost: 1800, upkeep: 40, jobs: 2, powerNeed: 8, waterNeed: 0, fundingGroup: 'utilities', needsRoad: true, provides: { water: 450 }, model: 'watertower' },
+  { id: 'waterplant', index: 0, name: 'Водопроводная станция', desc: 'Очень много воды для большого города.', icon: '💧', category: 'power', size: [2, 2], cost: 6000, upkeep: 110, jobs: 8, powerNeed: 30, waterNeed: 0, fundingGroup: 'utilities', needsRoad: true, provides: { water: 1800 }, model: 'waterplant' },
+  // Безопасность
+  { id: 'police', index: 0, name: 'Полицейский участок', desc: 'Снижает преступность в радиусе.', icon: '🚓', category: 'safety', size: [1, 1], cost: 2200, upkeep: 100, jobs: 8, powerNeed: 10, waterNeed: 2, fundingGroup: 'police', needsRoad: true, coverage: { type: 'police', radius: 11, strength: 1 }, model: 'police' },
+  { id: 'fire', index: 0, name: 'Пожарная часть', desc: 'Тушит пожары и повышает безопасность.', icon: '🚒', category: 'safety', size: [1, 1], cost: 2000, upkeep: 90, jobs: 8, powerNeed: 10, waterNeed: 4, fundingGroup: 'fire', needsRoad: true, coverage: { type: 'fire', radius: 12, strength: 1 }, model: 'fire' },
+  // Здоровье
+  { id: 'clinic', index: 0, name: 'Поликлиника', desc: 'Базовая медицина для района.', icon: '🩺', category: 'health', size: [1, 1], cost: 2600, upkeep: 120, jobs: 10, powerNeed: 12, waterNeed: 4, fundingGroup: 'health', needsRoad: true, coverage: { type: 'health', radius: 10, strength: 0.8 }, model: 'clinic' },
+  { id: 'hospital', index: 0, name: 'Больница', desc: 'Крупная больница с большим радиусом.', icon: '🏥', category: 'health', size: [2, 2], cost: 8000, upkeep: 320, jobs: 40, powerNeed: 40, waterNeed: 15, fundingGroup: 'health', needsRoad: true, coverage: { type: 'health', radius: 18, strength: 1 }, model: 'hospital' },
+  // Образование
+  { id: 'school', index: 0, name: 'Школа', desc: 'Повышает образование района.', icon: '🏫', category: 'education', size: [2, 2], cost: 3600, upkeep: 160, jobs: 14, powerNeed: 16, waterNeed: 6, fundingGroup: 'education', needsRoad: true, coverage: { type: 'education', radius: 12, strength: 0.7 }, model: 'school' },
+  { id: 'university', index: 0, name: 'Университет', desc: 'Высшее образование — нужно для небоскрёбов.', icon: '🎓', category: 'education', size: [3, 3], cost: 12000, upkeep: 520, jobs: 50, powerNeed: 60, waterNeed: 20, fundingGroup: 'education', needsRoad: true, coverage: { type: 'education', radius: 22, strength: 1 }, model: 'university' },
+  // Парки
+  { id: 'park', index: 0, name: 'Сквер', desc: 'Небольшой парк: счастье и стоимость земли.', icon: '🌳', category: 'parks', size: [1, 1], cost: 350, upkeep: 6, jobs: 0, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 6, strength: 0.9 }, model: 'park' },
+  { id: 'bigpark', index: 0, name: 'Городской парк', desc: 'Большой парк с фонтаном.', icon: '⛲', category: 'parks', size: [2, 2], cost: 1500, upkeep: 24, jobs: 1, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 11, strength: 1 }, model: 'bigpark' },
+];
