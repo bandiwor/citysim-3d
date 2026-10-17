@@ -28,6 +28,15 @@ export interface RoadCrossing {
   z: number;
 }
 
+/** Что именно мешает построить дорогу (для подсветки в предпросмотре). */
+export interface RoadBlocker {
+  kind: 'terrain' | 'building' | 'bounds' | 'angle' | 'close';
+  x: number;
+  z: number;
+  /** id здания, если помеха — здание */
+  buildingId: number;
+}
+
 export interface RoadPlan extends PlaceResult {
   typeId: string;
   cost: number;
@@ -37,6 +46,7 @@ export interface RoadPlan extends PlaceResult {
   start: RoadSnap;
   end: RoadSnap;
   crossings: RoadCrossing[];
+  blockers: RoadBlocker[];
 }
 
 export interface ServiceSpot {
@@ -98,11 +108,19 @@ export class Builder {
     const hw = type.width / 2;
     const pts = this.roadPoints(a, b, ctrl);
     const length = polyLength(pts);
-    const plan: RoadPlan = { ok: false, typeId, cost: 0, length, pts, hw, start: a, end: b, crossings: [] };
+    const plan: RoadPlan = { ok: false, typeId, cost: 0, length, pts, hw, start: a, end: b, crossings: [], blockers: [] };
     const bad = (key: string): RoadPlan => ({ ...plan, ok: false, reasonKey: key });
 
     if (length < cfg.roads.minSegmentLength) return bad('err.road.short');
     if (a.node && a.node === b.node) return bad('err.road.same');
+
+    // Собираем ВСЕ помехи, чтобы игроку было видно, что именно мешает.
+    const blockers: RoadBlocker[] = [];
+    const reasons = new Set<string>();
+    const block = (kind: RoadBlocker['kind'], x: number, z: number, key: string, buildingId = 0): void => {
+      reasons.add(key);
+      if (blockers.length < 40 && !blockers.some((m) => Math.hypot(m.x - x, m.z - z) < 4 && m.kind === kind)) blockers.push({ kind, x, z, buildingId });
+    };
 
     // рельеф и границы
     let waterLen = 0;
@@ -110,19 +128,21 @@ export class Builder {
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       if (i > 0) cum.push(cum[i - 1] + dist(pts[i - 1], p));
-      if (!world.inBounds(p.x, p.z, cfg.world.edgeMargin)) return bad('err.bounds');
+      if (!world.inBounds(p.x, p.z, cfg.world.edgeMargin)) block('bounds', p.x, p.z, 'err.bounds');
       const tan = i < pts.length - 1 ? norm2(pts[i + 1], p) : norm2(p, pts[i - 1]);
       for (const side of [-1, 0, 1]) {
-        const t = world.terrainAt(p.x - tan.z * hw * side, p.z + tan.x * hw * side);
-        if (t === Terrain.Blocked) return bad('err.terrain');
+        const sx = p.x - tan.z * hw * side;
+        const sz = p.z + tan.x * hw * side;
+        const t = world.terrainAt(sx, sz);
+        if (t === Terrain.Blocked) block('terrain', sx, sz, 'err.terrain');
         if (t === Terrain.Water && side === 0 && i > 0) waterLen += cum[i] - cum[i - 1];
       }
     }
 
-    // здания
+    // здания: расстояние до каждого отрезка дороги, а не только до точек
     for (const p of pts) {
       for (const bd of world.buildingsNear(p.x, p.z, 30)) {
-        if (obbDist(world.obbOf(bd), p) < hw + cfg.roads.buildingClearance) return bad('err.road.building');
+        if (obbDist(world.obbOf(bd), p) < hw + cfg.roads.buildingClearance) block('building', bd.x, bd.z, 'err.road.building', bd.id);
       }
     }
 
@@ -143,7 +163,7 @@ export class Builder {
           const tn = norm2(q, p);
           const te = norm2(e.pts[j + 1], e.pts[j]);
           const ang = Math.acos(Math.min(1, Math.abs(tn.x * te.x + tn.z * te.z)));
-          if (ang < (cfg.roads.minJunctionAngle * Math.PI) / 180) return bad('err.road.angle');
+          if (ang < (cfg.roads.minJunctionAngle * Math.PI) / 180) block('angle', hit.x, hit.z, 'err.road.angle');
           crossings.push({ s, x: hit.x, z: hit.z });
         }
       }
@@ -157,8 +177,13 @@ export class Builder {
         let d = Infinity;
         for (let j = 0; j < e.pts.length - 1; j++) d = Math.min(d, segDist(p, e.pts[j], e.pts[j + 1]));
         const need = (hw + e.hw) * 0.95;
-        if (d < need && !crossings.some((c) => dist(c, p) < (hw + e.hw) * 3) ) return bad('err.road.close');
+        if (d < need && !crossings.some((c) => dist(c, p) < (hw + e.hw) * 3)) block('close', p.x, p.z, 'err.road.close');
       }
+    }
+
+    if (reasons.size) {
+      const order = ['err.bounds', 'err.terrain', 'err.road.building', 'err.road.angle', 'err.road.close'];
+      return { ...plan, ok: false, reasonKey: order.find((k) => reasons.has(k)), blockers, crossings };
     }
 
     const cost = (length / cfg.roads.costUnit) * type.cost + (waterLen / cfg.roads.costUnit) * type.cost * (cfg.roads.bridgeCostMul - 1);
@@ -227,7 +252,7 @@ export class Builder {
     return { ok: true };
   }
 
-  private _addPieces(pts: Vec2[], a: RoadNode, b: RoadNode, type: { index: number; width: number; access: boolean }): RoadEdge[] {
+  private _addPieces(pts: Vec2[], a: RoadNode, b: RoadNode, type: { index: number; width: number; access: boolean; oneway: boolean }): RoadEdge[] {
     const world = this._game.world;
     const cfg = this._cfg;
     const cum = [0];
@@ -242,7 +267,7 @@ export class Builder {
       const node = i === k ? b : world.graph.addNode(pointAtLength(pts, cum, s1).x, pointAtLength(pts, cum, s1).z);
       const seg = slicePolyline(pts, cum, prevS, s1, prev, node);
       const bridge = seg.some((p) => world.terrainAt(p.x, p.z) === Terrain.Water);
-      out.push(world.graph.addEdge(prev.id, node.id, seg, { type: type.index, hw: type.width / 2, access: type.access, bridge }));
+      out.push(world.graph.addEdge(prev.id, node.id, seg, { type: type.index, hw: type.width / 2, access: type.access, bridge, oneway: type.oneway }));
       prev = node;
       prevS = s1;
     }
@@ -364,6 +389,14 @@ export class Builder {
     return { ok: true };
   }
 
+  removeStop(id: number): void {
+    const world = this._game.world;
+    if (!world.stops.some((s) => s.id === id)) return;
+    world.stops = world.stops.filter((s) => s.id !== id);
+    this._game.bus.emit('stops:changed');
+    this._game.sfx('bulldoze');
+  }
+
   // ================= снос =================
 
   /** Всё, что попадает в прямоугольник: здания, дороги, остановки, зоны. */
@@ -430,6 +463,110 @@ export class Builder {
     });
   }
 
+  // ================= рельеф =================
+
+  /** Нельзя ли менять рельеф в точке: рядом дорога, здание или размеченная клетка. */
+  isTerrainProtected(x: number, z: number): boolean {
+    const w = this._game.world;
+    const p = this._cfg.terraform.protect;
+    if (w.graph.clearance(x, z, p) < p) return true;
+    for (const b of w.buildingsNear(x, z, p + 12)) if (obbDist(w.obbOf(b), { x, z }) < p) return true;
+    for (const c of w.zones.near(x, z, p)) if (c.zone || c.building) return true;
+    return false;
+  }
+
+  /** Вершины рельефа под кистью с весами и признаком защиты. */
+  terrainBrush(x: number, z: number, r: number): { i: number; j: number; w: number; protectedPoint: boolean }[] {
+    const w = this._game.world;
+    const out: { i: number; j: number; w: number; protectedPoint: boolean }[] = [];
+    const n = w.size;
+    for (let j = Math.max(1, Math.floor((z - r) / CELL)); j <= Math.min(n - 1, Math.ceil((z + r) / CELL)); j++) {
+      for (let i = Math.max(1, Math.floor((x - r) / CELL)); i <= Math.min(n - 1, Math.ceil((x + r) / CELL)); i++) {
+        const d = Math.hypot(i * CELL - x, j * CELL - z);
+        if (d > r) continue;
+        const t = 1 - d / r;
+        out.push({ i, j, w: t * t * (3 - 2 * t), protectedPoint: this.isTerrainProtected(i * CELL, j * CELL) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Лепка рельефа кистью: raise/lower — поднять/опустить, flatten — выровнять до уровня земли (0), smooth — сгладить.
+   * Вершины рядом с дорогами, зданиями и зонами не меняются.
+   */
+  terraform(mode: 'raise' | 'lower' | 'flatten' | 'smooth', x: number, z: number, r: number): { ok: boolean; changed: number; reasonKey?: string } {
+    const game = this._game;
+    const w = game.world;
+    const c = this._cfg.terraform;
+    const n = w.size + 1;
+    const edits: { i: number; j: number; h: number }[] = [];
+    for (const v of this.terrainBrush(x, z, r)) {
+      if (v.protectedPoint) continue;
+      const h0 = w.heights[v.j * n + v.i];
+      let h = h0;
+      if (mode === 'raise') h += c.step * v.w;
+      else if (mode === 'lower') h -= c.step * v.w;
+      else if (mode === 'flatten') {
+        h = h0 + (0 - h0) * Math.min(1, v.w * 1.5);
+        if (Math.abs(h) < 0.3 && v.w > 0.3) h = 0;
+      } else {
+        const avg = (w.heights[v.j * n + v.i - 1] + w.heights[v.j * n + v.i + 1] + w.heights[(v.j - 1) * n + v.i] + w.heights[(v.j + 1) * n + v.i]) / 4;
+        h = h0 + (avg - h0) * 0.6 * v.w;
+        if (Math.abs(h) < 0.05) h = 0;
+      }
+      h = Math.min(c.maxHeight, Math.max(c.minHeight, h));
+      if (Math.abs(h) < 0.04) h = 0;
+      if (Math.abs(h - h0) > 0.005) edits.push({ i: v.i, j: v.j, h });
+    }
+    if (!edits.length) return { ok: false, changed: 0 };
+    if (!game.get('economy').spend(edits.length * c.costPerVertex)) return { ok: false, changed: 0, reasonKey: 'err.money' };
+    let i0 = Infinity;
+    let j0 = Infinity;
+    let i1 = -Infinity;
+    let j1 = -Infinity;
+    for (const e of edits) {
+      w.setVertexHeight(e.i, e.j, e.h);
+      i0 = Math.min(i0, e.i);
+      i1 = Math.max(i1, e.i);
+      j0 = Math.min(j0, e.j);
+      j1 = Math.max(j1, e.j);
+    }
+    w.reclassify(i0, j0, i1, j1);
+    // клетки зонирования, оказавшиеся на неровном месте, пропадают
+    for (const cell of w.zones.near(x, z, r + CELL * 2)) {
+      if (!cell.building && w.footprintTerrain({ x: cell.x, z: cell.z, hw: CELL / 2 - 0.1, hd: CELL / 2 - 0.1, rot: cell.rot }) !== Terrain.Land) w.zones.remove(cell.id);
+    }
+    this.regenerateCellsNear(x, z, r + 40);
+    game.bus.emit('terrain:changed');
+    game.bus.emit('zones:changed');
+    game.sfx('terraform');
+    return { ok: true, changed: edits.length };
+  }
+
+  // ================= светофоры =================
+
+  /** Узел-перекрёсток (≥3 дорог) рядом с точкой. */
+  junctionNear(x: number, z: number): RoadNode | null {
+    const g = this._game.world.graph;
+    const node = g.nearestNode(x, z, this._cfg.roads.snapRadius + 6);
+    return node && node.edges.length >= 3 ? node : null;
+  }
+
+  /** Поставить (on = true) или убрать светофор на перекрёстке. */
+  setTrafficLight(x: number, z: number, on: boolean): PlaceResult {
+    const game = this._game;
+    const node = this.junctionNear(x, z);
+    if (!node) return fail('err.light.junction');
+    if (node.light === on) return fail(on ? 'err.light.exists' : 'err.light.none');
+    if (on && !game.get('economy').spend(this._cfg.roads.lightCost)) return fail('err.money');
+    node.light = on;
+    game.world.graph.version++;
+    game.bus.emit('roads:changed');
+    game.sfx(on ? 'build' : 'bulldoze');
+    return { ok: true };
+  }
+
   // ================= здания =================
 
   /** Новая постройка на клетке зонирования. */
@@ -449,7 +586,7 @@ export class Builder {
       defId,
       zone: kind === 'zone' ? defId : '',
       level: 1,
-      variant: Math.floor(Math.random() * 3),
+      variant: Math.floor(Math.random() * g.config.render.zoneVariants),
       x,
       z,
       rot,
@@ -476,6 +613,10 @@ export class Builder {
       outage: 0,
       decay: 0,
       fire: 0,
+      garbage: 0,
+      dead: 0,
+      stored: 0,
+      incident: 0,
     };
     this.applyStats(b);
     return b;
@@ -544,7 +685,7 @@ export class Builder {
   /** Меняет уровень здания (апгрейд/даунгрейд). */
   setLevel(b: Building, level: number): void {
     b.level = level;
-    b.variant = Math.floor(Math.random() * 3);
+    b.variant = Math.floor(Math.random() * this._game.config.render.zoneVariants);
     this.applyStats(b);
     this._game.bus.emit('building:updated', b);
     this._game.sfx(level > 1 ? 'levelup' : 'tick');

@@ -43,7 +43,7 @@ describe('WorkerCompute: откат на основной поток', () => {
     };
     const c = new WorkerCompute();
     expect(c.inline).toBe(false);
-    c.setGraph({ version: 1, nodeCount: 2, edgeCount: 1, nodeX: Float32Array.from([0, 40]), nodeZ: new Float32Array(2), edgeA: Int32Array.from([0]), edgeB: Int32Array.from([1]), edgeLen: Float32Array.from([40]), edgeSpeed: Float32Array.from([14]), edgeCap: Float32Array.from([10]), edgeIds: Int32Array.from([7]), congestionPower: 2, minFlow: 0.3 });
+    c.setGraph({ version: 1, nodeCount: 2, edgeCount: 1, nodeX: Float32Array.from([0, 40]), nodeZ: new Float32Array(2), edgeA: Int32Array.from([0]), edgeB: Int32Array.from([1]), edgeLen: Float32Array.from([40]), edgeSpeed: Float32Array.from([14]), edgeCap: Float32Array.from([10]), edgeOneway: new Uint8Array(1), edgeIds: Int32Array.from([7]), congestionPower: 2, minFlow: 0.3 });
     const pending = c.generateTerrain(terrainParams(defaultConfig, 2, 12));
     const path = c.findPath({ id: 1, version: 1, fromEdge: 0, fromS: 5, toEdge: 0, toS: 30 });
     instances[0].onerror?.();

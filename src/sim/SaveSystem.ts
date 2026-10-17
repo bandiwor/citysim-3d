@@ -11,6 +11,8 @@ interface SavedNode {
   id: number;
   x: number;
   z: number;
+  /** 1 — светофор */
+  lt?: 1;
 }
 interface SavedEdge {
   id: number;
@@ -19,6 +21,7 @@ interface SavedEdge {
   /** id типа дороги */
   t: string;
   br: 0 | 1;
+  ow?: 1;
   /** ломаная [x0, z0, x1, z1, …] */
   p: number[];
 }
@@ -50,6 +53,17 @@ interface SavedBuilding {
   p: number;
   g: number;
   a: 0 | 1;
+  ga?: number;
+  de?: number;
+  st?: number;
+}
+
+interface SavedRoute {
+  id: number;
+  color: number;
+  stops: number[];
+  buses: number;
+  carried: number;
 }
 
 export interface SaveData {
@@ -64,9 +78,12 @@ export interface SaveData {
   nodes: SavedNode[];
   edges: SavedEdge[];
   cells: SavedCell[];
-  stops: { x: number; z: number }[];
+  stops: { id?: number; x: number; z: number }[];
+  routes?: SavedRoute[];
   buildings: SavedBuilding[];
   history: { net: number[]; pop: number[]; money: number[] };
+  /** правки рельефа: [индекс вершины, высота] */
+  terrain?: [number, number][];
 }
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
@@ -111,12 +128,14 @@ export class SaveSystem implements System {
       debt: e.debt,
       taxes: { ...e.taxes },
       funding: { ...e.funding },
-      nodes: [...w.graph.nodes.values()].map((n) => ({ id: n.id, x: r1(n.x), z: r1(n.z) })),
-      edges: [...w.graph.edges.values()].map((ed) => ({ id: ed.id, a: ed.a, b: ed.b, t: g.roadTypes.at(ed.type).id, br: ed.bridge ? 1 : 0, p: ed.pts.flatMap((p) => [r1(p.x), r1(p.z)]) })),
+      nodes: [...w.graph.nodes.values()].map((n) => ({ id: n.id, x: r1(n.x), z: r1(n.z), ...(n.light ? { lt: 1 as const } : {}) })),
+      edges: [...w.graph.edges.values()].map((ed) => ({ id: ed.id, a: ed.a, b: ed.b, t: g.roadTypes.at(ed.type).id, br: ed.bridge ? 1 : 0, ...(ed.oneway ? { ow: 1 as const } : {}), p: ed.pts.flatMap((p) => [r1(p.x), r1(p.z)]) })),
       cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone) })),
-      stops: w.stops.map((s) => ({ x: r1(s.x), z: r1(s.z) })),
-      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0 })),
+      stops: w.stops.map((s) => ({ id: s.id, x: r1(s.x), z: r1(s.z) })),
+      routes: g.get('transit').routes.map((r) => ({ id: r.id, color: r.color, stops: [...r.stops], buses: r.buses, carried: r.carried })),
+      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored) })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
+      terrain: [...w.terrainEdits].map(([k, h]) => [k, Math.round(h * 100) / 100] as [number, number]),
     };
   }
 
@@ -135,19 +154,36 @@ export class SaveSystem implements System {
   /** Применяет сохранение к свежесозданной игре (до game.start()). */
   static apply(g: Game, d: SaveData): void {
     const w = g.world;
-    for (const n of d.nodes) w.graph.restoreNode(n.id, n.x, n.z);
+    if (d.terrain?.length) {
+      const n1 = w.size + 1;
+      for (const [k, h] of d.terrain) w.setVertexHeight(k % n1, Math.floor(k / n1), h);
+      w.reclassify(0, 0, w.size, w.size);
+    }
+    for (const n of d.nodes) w.graph.restoreNode(n.id, n.x, n.z, !!n.lt);
     for (const e of d.edges) {
       const type = g.roadTypes.get(e.t);
       if (!type) continue;
       const pts = [];
       for (let i = 0; i < e.p.length; i += 2) pts.push({ x: e.p[i], z: e.p[i + 1] });
-      w.graph.addEdge(e.a, e.b, pts, { type: type.index, hw: type.width / 2, access: type.access, bridge: !!e.br }, e.id);
+      w.graph.addEdge(e.a, e.b, pts, { type: type.index, hw: type.width / 2, access: type.access, bridge: !!e.br, oneway: !!e.ow }, e.id);
     }
     for (const c of d.cells) {
       const zone = c.zone ? (g.zoneTypes.get(c.zone)?.index ?? -1) + 1 : 0;
       w.zones.add({ x: c.x, z: c.z, rot: c.r, tx: c.tx, tz: c.tz, nx: c.nx, nz: c.nz, row: c.row, zone, building: 0, edge: 0, s: 0 }, c.id);
     }
-    for (const s of d.stops) w.stops.push({ id: w.newId(), edge: 0, s: 0, x: s.x, z: s.z });
+    for (const s of d.stops) {
+      const id = s.id ?? w.newId();
+      w.bumpId(id);
+      w.stops.push({ id, edge: 0, s: 0, x: s.x, z: s.z });
+    }
+    const tr = g.get('transit');
+    for (const r of d.routes ?? []) {
+      const route = tr.createRoute(r.id);
+      route.color = r.color;
+      route.stops = r.stops.filter((id) => w.stops.some((s) => s.id === id));
+      route.buses = r.buses;
+      route.carried = r.carried;
+    }
     for (const s of d.buildings) {
       if (s.k === 'zone' ? !g.zoneTypes.has(s.d) : !g.services.has(s.d)) continue;
       const b = g.builder.createBuilding(s.k, s.d, s.x, s.z, s.r, s.w, s.h, s.c);
@@ -158,6 +194,9 @@ export class SaveSystem implements System {
       b.pop = Math.min(s.p, b.cap);
       b.goods = s.g;
       b.abandoned = !!s.a;
+      b.garbage = s.ga ?? 0;
+      b.dead = s.de ?? 0;
+      b.stored = s.st ?? 0;
       g.builder.addBuilding(b);
     }
     const t = g.get('time');

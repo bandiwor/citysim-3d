@@ -45,6 +45,14 @@ export interface Building {
   decay: number;
   /** >0 — здание горит (секунд) */
   fire: number;
+  /** накопленный мусор */
+  garbage: number;
+  /** тела, ожидающие вывоза (жилые) */
+  dead: number;
+  /** хранилище службы: мусор на свалке/в сжигателе либо тела на кладбище/в крематории */
+  stored: number;
+  /** >0 — идёт ограбление (секунд до исхода) */
+  incident: number;
 }
 
 export interface BusStop {

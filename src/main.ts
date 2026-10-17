@@ -50,6 +50,7 @@ async function boot(): Promise<void> {
   const loop = (now: number): void => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    ui.input.tick(dt);
     game.step(dt);
     renderer.frame(dt, dt * game.speed);
     const target = renderer.camera.target;

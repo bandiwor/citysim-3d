@@ -147,7 +147,7 @@ export class RoadView implements View {
     for (const e of graph.edges.values()) {
       const type = g.roadTypes.at(e.type);
       const hw = e.hw;
-      const sw = type.id === 'highway' ? 0.6 : 1.1;
+      const sw = type.sidewalk;
       const lift = waterY(e);
       const y = ROAD_Y + lift;
       const degA = graph.nodes.get(e.a)!.edges.length;
@@ -157,19 +157,29 @@ export class RoadView implements View {
       const s1 = e.len - (degB >= 3 ? trim : 0);
       if (s1 - s0 < 1) continue;
       const line = sub(e, s0, s1);
-      const left = offsetLine(line, -(hw - sw));
-      const right = offsetLine(line, hw - sw);
+      const inner = hw - sw;
+      const left = offsetLine(line, -inner);
+      const right = offsetLine(line, inner);
       p.strip(left, right, y, type.color);
 
-      // тротуары / ограждения моста
+      // тротуары / ограждения моста (у дороги без тротуара — только обочина земли)
       const top = e.bridge ? y + 0.85 : y + CURB;
       const outL = offsetLine(line, -hw);
       const outR = offsetLine(line, hw);
-      const swColor = type.id === 'highway' ? 0x9a9c9f : e.bridge ? 0xa7abb0 : SIDEWALK;
-      p.strip(outL, left, top, swColor);
-      p.strip(right, outR, top, swColor);
-      p.wall(left, y, top, 1, swColor);
-      p.wall(right, y, top, -1, swColor);
+      const swColor = type.median === 'barrier' ? 0x9a9c9f : e.bridge ? 0xa7abb0 : SIDEWALK;
+      if (sw > 0) {
+        p.strip(outL, left, top, swColor);
+        p.strip(right, outR, top, swColor);
+        p.wall(left, y, top, 1, swColor);
+        p.wall(right, y, top, -1, swColor);
+      } else if (e.bridge) {
+        p.wall(outL, y, top, 1, 0xa7abb0);
+        p.wall(outR, y, top, -1, 0xa7abb0);
+      } else {
+        const verge = 0x8a8068;
+        p.strip(offsetLine(line, -hw - 0.7), outL, y - 0.02, verge);
+        p.strip(outR, offsetLine(line, hw + 0.7), y - 0.02, verge);
+      }
       if (e.bridge) {
         p.wall(outL, y - 1.6, top, -1, CONCRETE);
         p.wall(outR, y - 1.6, top, 1, CONCRETE);
@@ -190,23 +200,60 @@ export class RoadView implements View {
           p.strip(l, r, my, color);
         }
       };
-      if (type.id === 'street') dash(0, 0xd8d8d0);
-      else if (type.id === 'avenue') {
-        p.strip(offsetLine(line, -0.5), offsetLine(line, 0.5), y + 0.22, 0x5f8a52);
-        p.wall(offsetLine(line, -0.5), y, y + 0.22, 1, 0x5f8a52);
-        p.wall(offsetLine(line, 0.5), y, y + 0.22, -1, 0x5f8a52);
-        dash(hw / 2, 0xd8d8d0, 0.1);
-        dash(-hw / 2, 0xd8d8d0, 0.1);
-      } else {
+      const mid = type.median;
+      if (mid === 'grass' || mid === 'trees') {
+        const mw = mid === 'trees' ? 1.4 : 0.5;
+        const col = mid === 'trees' ? 0x57884a : 0x5f8a52;
+        p.strip(offsetLine(line, -mw), offsetLine(line, mw), y + 0.22, col);
+        p.wall(offsetLine(line, -mw), y, y + 0.22, 1, col);
+        p.wall(offsetLine(line, mw), y, y + 0.22, -1, col);
+        if (mid === 'trees') {
+          for (let s = s0 + 3; s < s1 - 2; s += 9) {
+            const c = pointAtLength(e.pts, e.cum, s);
+            p.box(c.x, c.z, 0.18, 0.18, 0, y + 0.2, y + 1.8, 0x6e4a2c);
+            p.box(c.x, c.z, 1.1, 1.1, Math.atan2(c.tx, c.tz), y + 1.6, y + 3.3, 0x3f8a46);
+          }
+        }
+      }
+      if (mid === 'barrier') {
+        p.strip(offsetLine(line, -0.45), offsetLine(line, 0.45), y + 0.5, 0x9c9fa3);
+        p.wall(offsetLine(line, -0.45), y, y + 0.5, 1, 0x9c9fa3);
+        p.wall(offsetLine(line, 0.45), y, y + 0.5, -1, 0x9c9fa3);
+      }
+      const lanes = type.lanes;
+      if (type.marking === 'dash' && !type.oneway) {
+        if (mid === 'none') dash(0, type.id === 'country' ? 0xe6d27a : 0xd8d8d0);
+        else for (let k = 1; k < lanes; k++) {
+          const off = (inner / lanes) * k + (mid === 'trees' ? 0.9 : 0);
+          dash(off, 0xd8d8d0, 0.1);
+          dash(-off, 0xd8d8d0, 0.1);
+        }
+      } else if (type.marking === 'double') {
         p.strip(offsetLine(line, -0.45), offsetLine(line, -0.2), my, 0xe0b82e);
         p.strip(offsetLine(line, 0.2), offsetLine(line, 0.45), my, 0xe0b82e);
         dash(hw / 2 + 0.5, 0xe4e4e0, 0.1);
         dash(-hw / 2 - 0.5, 0xe4e4e0, 0.1);
+      } else if (type.oneway) {
+        // стрелки направления
+        for (let s = s0 + 5; s < s1 - 3; s += 14) {
+          const c = pointAtLength(e.pts, e.cum, s);
+          const rot = Math.atan2(c.tx, c.tz);
+          const nx = -c.tz;
+          const nz = c.tx;
+          p.box(c.x, c.z, 0.16, 1.1, rot, my, my + 0.01, 0xe8e8e0);
+          const tipX = c.x + c.tx * 1.2;
+          const tipZ = c.z + c.tz * 1.2;
+          for (const sign of [-1, 1]) {
+            const dx = -c.tx * Math.cos(0.7) + nx * sign * Math.sin(0.7);
+            const dz = -c.tz * Math.cos(0.7) + nz * sign * Math.sin(0.7);
+            p.box(tipX + dx * 0.4, tipZ + dz * 0.4, 0.13, 0.42, Math.atan2(dx, dz), my, my + 0.01, 0xe8e8e0);
+          }
+        }
       }
 
       // торец тупика
       for (const [deg, s, at] of [[degA, s0, 0], [degB, s1, 1]] as const) {
-        if (deg !== 1) continue;
+        if (deg !== 1 || sw <= 0) continue;
         const c = pointAtLength(e.pts, e.cum, s);
         p.box(c.x + c.tx * (at ? sw / 2 : -sw / 2), c.z + c.tz * (at ? sw / 2 : -sw / 2), hw, sw / 2, Math.atan2(c.tx, c.tz), y, top, swColor);
       }

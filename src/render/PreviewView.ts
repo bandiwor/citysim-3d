@@ -1,9 +1,10 @@
-import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, Vector3, type Scene } from 'three';
+import { BufferGeometry, CircleGeometry, Color, DoubleSide, Float32BufferAttribute, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, Vector3, type Scene } from 'three';
 import type { PreviewRibbon, PreviewState } from '../core/Tool';
 
 const OK = 0x4cd964;
 const BAD = 0xff4d4d;
 const MAX_QUADS = 3000;
+const MAX_MARKS = 200;
 
 /** Подсветка при строительстве: квадраты клеток/оснований, лента дороги, кольцо кисти, маркер привязки. */
 export class PreviewView {
@@ -11,6 +12,7 @@ export class PreviewView {
   private _ribbon: Mesh;
   private _ring: Mesh;
   private _marker: Mesh;
+  private _marks: InstancedMesh;
   private _m = new Matrix4();
   private _q = new Quaternion();
   private _p = new Vector3();
@@ -30,7 +32,11 @@ export class PreviewView {
     this._ring.renderOrder = 6;
     this._marker = new Mesh(new RingGeometry(1.2, 2, 24).rotateX(-Math.PI / 2), new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false }));
     this._marker.renderOrder = 7;
-    for (const o of [this._quads, this._ribbon, this._ring, this._marker]) scene.add(o);
+    this._marks = new InstancedMesh(new CircleGeometry(1.3, 10).rotateX(-Math.PI / 2), new MeshBasicMaterial({ color: BAD, transparent: true, opacity: 0.8, depthWrite: false }), MAX_MARKS);
+    this._marks.count = 0;
+    this._marks.frustumCulled = false;
+    this._marks.renderOrder = 7;
+    for (const o of [this._quads, this._ribbon, this._ring, this._marker, this._marks]) scene.add(o);
     this._ring.visible = this._marker.visible = this._ribbon.visible = false;
   }
 
@@ -41,7 +47,7 @@ export class PreviewView {
       this._q.setFromAxisAngle(this._up, q.rot);
       this._m.compose(this._p.set(q.x, 0.35, q.z), this._q, this._s.set(q.w, 1, q.d));
       this._quads.setMatrixAt(i, this._m);
-      this._quads.setColorAt(i, this._col.setHex(q.ok ? OK : BAD));
+      this._quads.setColorAt(i, this._col.setHex(q.color ?? (q.ok ? OK : BAD)));
     }
     this._quads.count = n;
     this._quads.instanceMatrix.needsUpdate = true;
@@ -54,8 +60,12 @@ export class PreviewView {
     if (s.ring) {
       this._ring.position.set(s.ring.x, 0.4, s.ring.z);
       this._ring.scale.set(s.ring.r, 1, s.ring.r);
-      (this._ring.material as MeshBasicMaterial).color.setHex(s.ring.ok ? 0xffffff : BAD);
+      (this._ring.material as MeshBasicMaterial).color.setHex(!s.ring.ok ? BAD : (s.ring.color ?? 0xffffff));
     }
+    const nm = Math.min(s.marks.length, MAX_MARKS);
+    for (let i = 0; i < nm; i++) this._marks.setMatrixAt(i, this._m.compose(this._p.set(s.marks[i].x, 0.5, s.marks[i].z), this._q.identity(), this._s.set(1, 1, 1)));
+    this._marks.count = nm;
+    this._marks.instanceMatrix.needsUpdate = true;
     this._marker.visible = !!s.marker;
     if (s.marker) {
       this._marker.position.set(s.marker.x, 0.45, s.marker.z);
@@ -88,6 +98,7 @@ export class PreviewView {
 
   clear(): void {
     this._quads.count = 0;
+    this._marks.count = 0;
     this._ribbon.visible = this._ring.visible = this._marker.visible = false;
   }
 }

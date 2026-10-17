@@ -38,6 +38,9 @@ export const defaultConfig = {
     daysPerMonth: 30,
     monthsPerYear: 12,
     speeds: [0, 1, 2, 4],
+    /** рассвет и закат в долях суток: 0.25 — 06:00, 0.75 — 18:00 */
+    sunrise: 0.25,
+    sunset: 0.75,
   },
   economy: {
     startMoney: 50000,
@@ -70,7 +73,7 @@ export const defaultConfig = {
     /** сдвиг привязки к существующему узлу при пересечении, ед. */
     junctionMerge: 7,
     /** множитель отступа дороги от зданий */
-    buildingClearance: 0.8,
+    buildingClearance: 0.4,
     /** шаг угловой привязки (Shift), градусы */
     angleSnap: 15,
     /** множитель стоимости моста */
@@ -79,6 +82,31 @@ export const defaultConfig = {
     costUnit: 8,
     /** минимальный угол между дорогами в узле, градусы */
     minJunctionAngle: 18,
+    /** период светофора, с, и длительность жёлтого */
+    lightCycle: 14,
+    lightYellow: 2,
+    /** за сколько ед. до узла машины останавливаются на красный */
+    lightStop: 3,
+    /** расстояние между стоящими в очереди машинами */
+    queueGap: 5.5,
+    lightCost: 150,
+    /** радиус перекрёстка без светофора, где машины мешают друг другу, и штраф к скорости при заторе */
+    junctionRadius: 9,
+    junctionBusy: 3,
+    junctionPenalty: 0.55,
+  },
+  terraform: {
+    /** радиусы кисти, ед. */
+    brushSizes: [14, 26, 44],
+    defaultBrush: 1,
+    /** изменение высоты за одно применение, ед. */
+    step: 1.2,
+    /** цена за изменённую вершину */
+    costPerVertex: 1.5,
+    /** не трогаем вершины ближе этого расстояния до дорог, зданий и зон, ед. */
+    protect: 8,
+    minHeight: -6,
+    maxHeight: 40,
   },
   zoning: {
     /** глубина зоны в рядах клеток */
@@ -176,6 +204,66 @@ export const defaultConfig = {
     interval: 0.2,
     maxInterval: 2,
   },
+  garbage: {
+    /** мусор в секунду на жителя / рабочее место */
+    perResident: 0.004,
+    perJob: 0.006,
+    /** вызывать мусоровоз при таком количестве мусора */
+    dispatchAt: 14,
+    /** предел накопления (дальше — свалка во дворе) */
+    cap: 60,
+    truckLoad: 40,
+    interval: 2,
+    /** при мусоре выше этой доли предела падает счастье */
+    unhappyAt: 0.6,
+    unhappy: -0.12,
+  },
+  death: {
+    /** смертность в секунду на жителя */
+    rate: 0.00002,
+    /** во сколько раз здравоохранение снижает смертность при полном покрытии */
+    healthEffect: 0.6,
+    /** множитель смертности, пока тела не вывезены */
+    unburiedBoost: 1.8,
+    hearseLoad: 4,
+    cap: 8,
+    interval: 2,
+    unhappy: -0.15,
+  },
+  crime: {
+    interval: 1,
+    /** вероятность ограбления в секунду на здание при нулевом покрытии полицией и безработице 0 */
+    baseRate: 0.00035,
+    unemploymentBoost: 2.5,
+    policeEffect: 0.85,
+    /** добыча за рабочее место / жителя */
+    lootPerJob: 2.5,
+    lootPerResident: 0.8,
+    /** штраф с пойманного преступника */
+    fine: 120,
+    /** через сколько секунд преступник скрывается, если полиция не приехала */
+    timeout: 24,
+    maxActive: 6,
+    unhappy: -0.1,
+  },
+  pedestrians: {
+    max: 260,
+    /** радиус вокруг камеры/игрока, где живут пешеходы, ед. */
+    radius: 170,
+    spawnPerSecond: 24,
+    speed: [1.1, 1.7] as [number, number],
+    perResidentNear: 0.35,
+    /** пешеходы видны, если камера ближе этого расстояния */
+    visibleZoom: 300,
+  },
+  fp: {
+    eyeHeight: 1.7,
+    walk: 6,
+    run: 14,
+    radius: 0.55,
+    sensitivity: 0.0022,
+    fov: 70,
+  },
   traffic: {
     maxVehicles: 420,
     busExtra: 40,
@@ -202,17 +290,35 @@ export const defaultConfig = {
     occupancySync: 0.5,
     flowSmoothing: 0.5,
     offsetDecay: 7,
-    speedMul: { car: [0.9, 1.1], truck: [0.8, 0.8], bus: [0.85, 0.85] } as Record<string, [number, number]>,
+    speedMul: { car: [0.9, 1.1], truck: [0.8, 0.8], bus: [0.85, 0.85], police: [1, 1], garbage: [0.8, 0.8], hearse: [0.85, 0.85] } as Record<string, [number, number]>,
   },
   transit: {
+    /** радиус охвата остановки, клеток */
     stopRadius: 6,
-    maxBusesPerGroup: 6,
-    busWait: 2.2,
+    busCapacity: 30,
+    busWait: 2.4,
+    /** пассажиров в секунду на жителя в зоне остановки при полном спросе */
+    demandPerResident: 0.0018,
+    /** предел очереди на остановке */
+    maxWaiting: 120,
+    /** целевой интервал между автобусами маршрута, с */
+    headway: 70,
+    maxBusesPerRoute: 8,
+    /** пауза между выпусками автобусов из депо, с */
+    spawnInterval: 7,
     shareMax: 0.5,
     shareFactor: 0.55,
-    ridersPerPop: 0.04,
-    maxRidersPerStop: 30,
     stopMergeDistance: 10,
+    /** привязка точки маршрута к остановке, ед. */
+    routeSnap: 14,
+    /** доли целей поездки по времени суток: утро / день / вечер / ночь */
+    purposeMix: {
+      morning: { work: 0.7, shop: 0.1, home: 0.2 },
+      day: { work: 0.25, shop: 0.45, home: 0.3 },
+      evening: { work: 0.1, shop: 0.25, home: 0.65 },
+      night: { work: 0.05, shop: 0.1, home: 0.85 },
+    } as Record<string, Record<string, number>>,
+    routeColors: [0xe8a21a, 0x2f9bd9, 0xd9534f, 0x5cb85c, 0xb36bd1, 0x20c9b4, 0xe6679c, 0x9aa5b1],
   },
   disasters: {
     enabled: true,
@@ -245,6 +351,8 @@ export const defaultConfig = {
     exposure: 0.9,
     treeLimit: 9000,
     alertLimit: 70,
+    /** число вариантов внешнего вида на уровень зоны */
+    zoneVariants: 6,
   },
   audio: {
     master: 0.8,

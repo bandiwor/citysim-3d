@@ -14,7 +14,12 @@ import { TimeSystem } from '../sim/TimeSystem';
 import { TrafficSystem } from '../sim/TrafficSystem';
 import { TransitSystem } from '../sim/TransitSystem';
 import { UtilitySystem } from '../sim/UtilitySystem';
-import { BulldozeTool, PlaceTool, RoadTool, SelectTool, StopTool, ZoneTool } from '../tools/Tools';
+import { LightTool, RouteTool, StopTool, TerraformTool, WalkTool } from '../tools/MoreTools';
+import { BulldozeTool, PlaceTool, RoadTool, SelectTool, ZoneTool } from '../tools/Tools';
+import { CrimeSystem } from '../sim/CrimeSystem';
+import { PedestrianSystem } from '../sim/PedestrianSystem';
+import { FleetSystem } from '../sim/FleetSystem';
+import { SanitationSystem } from '../sim/SanitationSystem';
 import { registerOverlays } from './overlays';
 
 /*
@@ -35,11 +40,21 @@ export const coreFeature: Feature = {
     g.addSystem(new DemandSystem());
     g.addSystem(new GrowthSystem());
     g.addSystem(new EconomySystem());
+    g.addSystem(new SanitationSystem());
+    g.addSystem(new CrimeSystem());
+    g.addSystem(new PedestrianSystem());
     g.addSystem(new SaveSystem());
     registerOverlays(g);
     g.addCategory({ id: 'tools', icon: '🧰' });
     g.toolbar.add({ id: 'select', category: 'tools', nameKey: 'tool.select.name', descKey: 'tool.select.desc', icon: '👆', hotkey: 'Escape', createTool: (game) => new SelectTool(game) });
     g.toolbar.add({ id: 'bulldoze', category: 'tools', nameKey: 'tool.bulldoze.name', descKey: 'tool.bulldoze.desc', icon: '🚧', hotkey: 'KeyX', createTool: (game) => new BulldozeTool(game) });
+    g.toolbar.add({ id: 'walk', category: 'tools', nameKey: 'tool.walk.name', descKey: 'tool.walk.desc', icon: '🚶', createTool: (game) => new WalkTool(game) });
+    // рельеф
+    g.addCategory({ id: 'terrain', icon: '⛰️' });
+    const terra: [string, string][] = [['raise', '⬆️'], ['lower', '⬇️'], ['flatten', '🟰'], ['smooth', '〰️']];
+    for (const [mode, icon] of terra) {
+      g.toolbar.add({ id: `terraform:${mode}`, category: 'terrain', nameKey: `tool.terraform.${mode}.name`, descKey: `tool.terraform.${mode}.desc`, icon, cost: g.config.terraform.costPerVertex, createTool: (game) => new TerraformTool(game, mode as 'raise' | 'lower' | 'flatten' | 'smooth') });
+    }
   },
 };
 
@@ -51,6 +66,8 @@ export const roadsFeature: Feature = {
     for (const r of g.roadTypes.all()) {
       g.toolbar.add({ id: `road:${r.id}`, category: 'roads', nameKey: `road.${r.id}.name`, descKey: `road.${r.id}.desc`, icon: r.icon, cost: r.cost, createTool: (game) => new RoadTool(game, r.id) });
     }
+    g.toolbar.add({ id: 'light:add', category: 'roads', nameKey: 'tool.light.add.name', descKey: 'tool.light.add.desc', icon: '🚦', cost: g.config.roads.lightCost, createTool: (game) => new LightTool(game, true) });
+    g.toolbar.add({ id: 'light:remove', category: 'roads', nameKey: 'tool.light.remove.name', descKey: 'tool.light.remove.desc', icon: '🚫', createTool: (game) => new LightTool(game, false) });
   },
 };
 
@@ -62,11 +79,11 @@ export const zonesFeature: Feature = {
     for (const z of g.zoneTypes.all()) {
       g.toolbar.add({ id: `zone:${z.id}`, category: 'zones', nameKey: `zone.${z.id}.name`, descKey: `zone.${z.id}.desc`, icon: z.icon, cost: z.cost, createTool: (game) => new ZoneTool(game, z.id) });
     }
-    g.toolbar.add({ id: 'zone:none', category: 'zones', nameKey: 'tool.dezone.name', descKey: 'tool.dezone.desc', icon: '🧹', createTool: (game) => new ZoneTool(game, null) });
+    g.toolbar.add({ id: 'zone:none', category: 'zones', nameKey: 'tool.dezone.name', descKey: 'tool.dezone.desc', icon: '🧹', hotkey: 'KeyZ', createTool: (game) => new ZoneTool(game, null) });
   },
 };
 
-const CATEGORY_ICONS: Record<string, string> = { power: '⚡', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳' };
+const CATEGORY_ICONS: Record<string, string> = { power: '⚡', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳', garbage: '🗑️' };
 
 export const servicesFeature: Feature = {
   id: 'services',
@@ -87,9 +104,11 @@ export const trafficFeature: Feature = {
   id: 'traffic',
   install(g) {
     g.addSystem(new TrafficSystem());
+    g.addSystem(new FleetSystem());
     g.addSystem(new TransitSystem());
     g.addCategory({ id: 'transit', icon: '🚌' });
     g.toolbar.add({ id: 'stop', category: 'transit', nameKey: 'tool.stop.name', descKey: 'tool.stop.desc', icon: '🚏', cost: g.config.economy.stopCost, createTool: (game) => new StopTool(game) });
+    g.toolbar.add({ id: 'route', category: 'transit', nameKey: 'tool.route.name', descKey: 'tool.route.desc', icon: '🧭', createTool: (game) => new RouteTool(game) });
   },
 };
 

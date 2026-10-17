@@ -72,8 +72,14 @@ export function generateTerrain(p: TerrainParams): TerrainData {
     }
   }
 
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
+  classifyTerrain(heights, terrain, n, p.flatEpsilon);
+  return { size: n, heights, terrain };
+}
+
+/** Класс клетки по высотам её четырёх вершин. Можно обновить только прямоугольник клеток. */
+export function classifyTerrain(heights: Float32Array, terrain: Uint8Array, n: number, eps: number, x0 = 0, y0 = 0, x1 = n - 1, y1 = n - 1): void {
+  for (let y = Math.max(0, y0); y <= Math.min(n - 1, y1); y++) {
+    for (let x = Math.max(0, x0); x <= Math.min(n - 1, x1); x++) {
       let min = Infinity;
       let max = -Infinity;
       for (let dy = 0; dy <= 1; dy++) {
@@ -84,10 +90,9 @@ export function generateTerrain(p: TerrainParams): TerrainData {
         }
       }
       let t: number = Terrain.Land;
-      if (max > p.flatEpsilon) t = Terrain.Blocked;
-      else if (min < -p.flatEpsilon) t = Terrain.Water;
+      if (max > eps) t = Terrain.Blocked;
+      else if (min < -eps) t = Terrain.Water;
       terrain[y * n + x] = t;
     }
   }
-  return { size: n, heights, terrain };
 }

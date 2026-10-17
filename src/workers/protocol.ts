@@ -12,6 +12,8 @@ export interface GraphSnapshot {
   edgeLen: Float32Array;
   edgeSpeed: Float32Array;
   edgeCap: Float32Array;
+  /** 1 — одностороннее ребро (только a → b) */
+  edgeOneway: Uint8Array;
   /** индекс ребра → id ребра в RoadGraph */
   edgeIds: Int32Array;
   congestionPower: number;

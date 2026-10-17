@@ -15,6 +15,9 @@ interface Tree {
   id: number;
   x: number;
   z: number;
+  s: number;
+  sy: number;
+  color: number;
 }
 
 /** Декоративные деревья; исчезают там, где проложена дорога, размечена зона или стоит здание. */
@@ -26,6 +29,8 @@ export class TreeView implements View {
   private _worldVersion = -1;
   private _timer = 0;
   private _force = true;
+  private _terrainDirty = false;
+  private _m = new Matrix4();
 
   constructor(scene: Scene, private _game: Game) {
     this._pool = new InstancePool(treeModel(), new MeshLambertMaterial({ vertexColors: true }), _game.config.render.treeLimit);
@@ -49,13 +54,16 @@ export class TreeView implements View {
         const wx = (x + 0.15 + rng.next() * 0.7) * CELL;
         const wz = (y + 0.15 + rng.next() * 0.7) * CELL;
         const s = 0.8 + rng.next() * 0.7;
-        m.makeScale(s, s * (0.9 + rng.next() * 0.4), s).setPosition(wx, w.heightAt(wx, wz) - 0.1, wz);
+        const sy = s * (0.9 + rng.next() * 0.4);
+        m.makeScale(s, sy, s).setPosition(wx, w.heightAt(wx, wz) - 0.1, wz);
         const shade = 0.7 + rng.next() * 0.5;
         const id = i * PER_CELL + k;
-        this._pool.set(id, m, col.setRGB(shade * 0.9, shade, shade * 0.85).getHex());
-        this._trees.push({ id, x: wx, z: wz });
+        const color = col.setRGB(shade * 0.9, shade, shade * 0.85).getHex();
+        this._pool.set(id, m, color);
+        this._trees.push({ id, x: wx, z: wz, s, sy, color });
       }
     }
+    _game.bus.on('terrain:changed', () => (this._terrainDirty = true));
   }
 
   private _blocked(x: number, z: number): boolean {
@@ -66,8 +74,26 @@ export class TreeView implements View {
     return false;
   }
 
+  /** После терраформинга: деревья перестают «висеть», а в воде и под размеченными клетками исчезают. */
+  private _regrow(): void {
+    const w = this._game.world;
+    this._trees = this._trees.filter((t) => {
+      if (w.terrainAt(t.x, t.z) === Terrain.Water) {
+        this._pool.remove(t.id);
+        return false;
+      }
+      this._m.makeScale(t.s, t.sy, t.s).setPosition(t.x, w.heightAt(t.x, t.z) - 0.1, t.z);
+      this._pool.set(t.id, this._m, t.color);
+      return true;
+    });
+  }
+
   update(realDt: number): void {
     const w = this._game.world;
+    if (this._terrainDirty) {
+      this._terrainDirty = false;
+      this._regrow();
+    }
     this._timer += realDt;
     const changed = w.graph.version !== this._graphVersion || w.zones.version !== this._zoneVersion || w.version !== this._worldVersion;
     if (!this._force && (!changed || this._timer < 0.3)) return;

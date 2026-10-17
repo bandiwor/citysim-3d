@@ -15,6 +15,7 @@ function bar(v: number, good = true): HTMLElement {
 export class Inspector {
   readonly el = h('div', { class: 'panel inspector', style: 'display:none' });
   private _b: Building | null = null;
+  private _stop = 0;
   private _timer: number;
   private _offs: (() => void)[] = [];
 
@@ -22,6 +23,12 @@ export class Inspector {
     this._offs.push(
       _game.bus.on('select', (b) => {
         this._b = b;
+        if (b) this._stop = 0;
+        this.render();
+      }),
+      _game.bus.on('select:stop', (id) => {
+        this._stop = id ?? 0;
+        if (id) this._b = null;
         this.render();
       }),
       _game.bus.on('building:removed', (b) => {
@@ -31,7 +38,7 @@ export class Inspector {
         }
       }),
     );
-    this._timer = window.setInterval(() => this._b && this.render(), 600);
+    this._timer = window.setInterval(() => (this._b || this._stop) && this.render(), 600);
     this.render();
   }
 
@@ -40,7 +47,39 @@ export class Inspector {
     for (const f of this._offs) f();
   }
 
+  private _renderStop(): void {
+    const g = this._game;
+    const tr = g.get('transit');
+    const stop = tr.stopById(this._stop);
+    if (!stop) {
+      this._stop = 0;
+      this.el.style.display = 'none';
+      return;
+    }
+    const info = tr.info(stop.id);
+    const rows: HTMLElement[] = [];
+    const row = (k: string, v: string): void => {
+      rows.push(h('div', { class: 'row' }, h('span', { class: 'k', text: k }), h('span', { class: 'v', text: v })));
+    };
+    row(t('stop.waiting'), fmtNumber(info.total));
+    row(t('stop.catchment'), `👥 ${fmtNumber(Math.round(info.pop))} · 💼 ${fmtNumber(Math.round(info.jobs))} · 🛒 ${fmtNumber(Math.round(info.shops))}`);
+    row(t('stop.unserved'), fmtNumber(info.unserved));
+    const routes = tr.routes.filter((r) => r.stops.includes(stop.id));
+    if (!routes.length) row(t('stop.routes'), t('stop.noRoutes'));
+    for (const r of routes) {
+      const w = [...(info.waiting.get(r.id)?.values() ?? [])].reduce((a, b) => a + b, 0);
+      rows.push(h('div', { class: 'row' }, h('span', { class: 'k' }, h('span', { class: 'chip', style: `background:#${r.color.toString(16).padStart(6, '0')}` }), ` ${t('routes.name', { n: r.id })}`), h('span', { class: 'v', text: `${fmtNumber(w)} ${t('stop.people')}` })));
+    }
+    this.el.style.display = 'block';
+    this.el.replaceChildren(
+      h('div', { class: 'panel-head' }, h('span', { text: `🚏 ${t('stop.title')}` }), h('button', { class: 'btn icon sm', text: '✕', onclick: () => g.bus.emit('select:stop', null) })),
+      ...rows,
+      h('button', { class: 'btn danger', text: t('inspector.demolish'), onclick: () => { g.builder.removeStop(stop.id); g.bus.emit('select:stop', null); } }),
+    );
+  }
+
   render(): void {
+    if (this._stop) return this._renderStop();
     const b = this._b;
     this.el.style.display = b ? 'block' : 'none';
     if (!b) return;
@@ -58,6 +97,7 @@ export class Inspector {
       icon = z.icon;
       if (z.housing) row(t('inspector.residents'), `${fmtNumber(b.pop)} / ${fmtNumber(b.cap)}`);
       else row(t('inspector.workers'), `${fmtNumber(b.workers)} / ${fmtNumber(b.jobs)}`);
+      if (z.housing) row(t('inspector.employed'), fmtPercent(1 - g.get('stats').unemployment));
       if (z.id === 'com') row(t('inspector.goods'), fmtPercent(b.goods));
       row(t('inspector.happiness'), bar(b.happiness));
       row(t('inspector.landValue'), bar(maps.sample('landValue', b.x, b.z)));
@@ -67,7 +107,10 @@ export class Inspector {
       title = t(`service.${d.id}.name`);
       icon = d.icon;
       row(t('inspector.upkeep'), `${fmtMoney(d.upkeep * (g.get('economy').funding[d.fundingGroup] ?? 1))}${t('unit.perMonth')}`);
-      if (d.jobs) row(t('inspector.staff'), fmtNumber(d.jobs));
+      if (d.jobs) row(t('inspector.staff'), `${fmtNumber(b.workers)} / ${fmtNumber(d.jobs)}`);
+      if (d.waste) row(t('inspector.wasteStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(d.waste.capacity)}`);
+      if (d.morgue) row(t('inspector.bodiesStored'), `${fmtNumber(Math.round(b.stored))} / ${fmtNumber(d.morgue.capacity)}`);
+      if (d.fleet) row(t('inspector.fleet'), `${d.fleet.count} · ${t(`fleet.${d.fleet.kind}`)}`);
       if (d.provides?.power) row(t('inspector.power'), `+${fmtNumber(d.provides.power)}`);
       if (d.provides?.water) row(t('inspector.water'), `+${fmtNumber(d.provides.water)}`);
       if (d.coverage) row(t('inspector.radius'), `${d.coverage.radius} ${t('unit.cells')}`);
@@ -77,6 +120,9 @@ export class Inspector {
     if (b.waterNeed > 0) row(`${t('inspector.waterSupply')} (${fmtNumber(b.waterNeed)})`, b.watered ? '✅' : `❌ ${t('inspector.none')}`);
     if (b.abandoned) row(t('inspector.state'), `🏚️ ${t('inspector.abandoned')}`);
     if (b.fire > 0) row(t('inspector.state'), `🔥 ${t('inspector.fire')}`);
+    if (b.incident > 0) row(t('inspector.state'), `🚨 ${t('inspector.robbery')}`);
+    if (b.kind === 'zone') row(t('inspector.garbage'), bar(b.garbage / g.config.garbage.cap, false));
+    if (b.dead > 0) row(t('inspector.state'), `⚰️ ${t('inspector.dead', { n: b.dead })}`);
     this.el.replaceChildren(
       h('div', { class: 'panel-head' }, h('span', { text: `${icon} ${title}` }), h('button', { class: 'btn icon sm', text: '✕', onclick: () => g.bus.emit('select', null) })),
       ...rows,

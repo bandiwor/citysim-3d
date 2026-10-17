@@ -3,8 +3,6 @@ import { Rng } from '../core/Rng';
 import { CELL } from '../world/World';
 import { GeomBuilder } from './GeomBuilder';
 
-const FLOOR = 3;
-
 type ModelFactory = (rng: Rng) => BufferGeometry;
 
 /**
@@ -13,79 +11,7 @@ type ModelFactory = (rng: Rng) => BufferGeometry;
  */
 export const serviceModels = new Map<string, ModelFactory>();
 
-// ---------------- жилые / коммерческие / промышленные ----------------
-
-export function zoneModel(zone: string, level: number, variant: number): BufferGeometry {
-  const rng = new Rng(zone.charCodeAt(0) * 1000 + level * 37 + variant * 7919);
-  const b = new GeomBuilder();
-  const floors = (lo: number, hi: number): number => lo + Math.round((hi - lo) * (variant / 2));
-  if (zone === 'res') {
-    if (level === 1) {
-      const f = floors(1, 2);
-      const w = 4.6 + rng.range(0, 1.2);
-      const d = 4.4 + rng.range(0, 1);
-      b.box(w, f * FLOOR, d, 0, 0, 0, 0xffffff, { windows: true });
-      b.roof(w + 0.8, d + 0.8, 2.4, 0, f * FLOOR, 0, 0xb4533c);
-      b.box(2.4, 2.2, 2.4, w / 2 - 0.2, 0, d / 2 + 0.6, 0xf3efe6);
-      b.box(0.7, 1.6, 0.7, -w / 4, f * FLOOR + 1.4, 0, 0x8a4a38);
-    } else if (level === 2) {
-      const f = floors(3, 5);
-      b.box(6.2, f * FLOOR, 5.8, 0, 0, 0, 0xffffff, { windows: true });
-      b.box(6.6, 0.4, 6.2, 0, f * FLOOR, 0, 0x9aa0a6);
-      b.box(1.8, 1.4, 1.8, -1.6, f * FLOOR + 0.4, 1, 0xc9ccd0);
-      b.box(6.4, 0.5, 1.2, 0, FLOOR, 3.4, 0xd7d2c4);
-    } else {
-      const f = floors(8, 14);
-      b.box(7.2, FLOOR * 2, 7.2, 0, 0, 0, 0xe9e9e4, { windows: true });
-      b.box(5.2, f * FLOOR, 5.2, 0, FLOOR * 2, 0, 0xffffff, { windows: true });
-      b.box(5.6, 0.5, 5.6, 0, FLOOR * (f + 2), 0, 0x8d949b);
-      b.box(2.2, 1.6, 2.2, 0.8, FLOOR * (f + 2) + 0.5, -0.5, 0xb9bec3);
-      b.cylinder(0.12, 0.12, 4, -1.4, FLOOR * (f + 2) + 0.5, 1.2, 0xcc4444, 5);
-    }
-  } else if (zone === 'com') {
-    if (level === 1) {
-      const f = floors(1, 2);
-      b.box(6.8, f * FLOOR + 0.6, 5.6, 0, 0, -0.4, 0xffffff, { windows: true });
-      b.box(6.8, 0.3, 1.8, 0, 2.4, 2.9, 0xd9523b);
-      b.box(2.4, 1.2, 0.2, 1.6, f * FLOOR + 0.8, 2.4, 0x2d78c8);
-      b.box(1.4, 0.8, 1.4, -2, f * FLOOR + 0.6, -1, 0xb7babd);
-    } else if (level === 2) {
-      const f = floors(3, 5);
-      b.box(7, FLOOR, 7, 0, 0, 0, 0xcfe3f2, { windows: true });
-      b.box(6.2, f * FLOOR, 6.2, 0, FLOOR, 0, 0xffffff, { windows: true });
-      b.box(6.6, 0.5, 6.6, 0, FLOOR * (f + 1), 0, 0x6e7a85);
-      b.box(2.2, 1.2, 2.2, 1.4, FLOOR * (f + 1) + 0.5, 1, 0xaab3ba);
-    } else {
-      const f = floors(9, 14);
-      b.box(7.4, FLOOR * 2, 7.4, 0, 0, 0, 0xcfe3f2, { windows: true });
-      b.box(5.8, f * FLOOR, 5.8, 0, FLOOR * 2, 0, 0xe4f1fb, { windows: true });
-      b.box(4.2, 2 * FLOOR, 4.2, 0, FLOOR * (f + 2), 0, 0xe4f1fb, { windows: true });
-      b.cylinder(0.1, 0.25, 7, 0, FLOOR * (f + 4), 0, 0xd9d9d9, 5);
-    }
-  } else {
-    if (level === 1) {
-      b.box(6.8, 4, 5.8, 0, 0, 0, 0xd8dde3, { windows: true });
-      b.box(7, 0.5, 6, 0, 4, 0, 0x7b8590);
-      b.cylinder(0.6, 0.7, 6.5, -2.2, 4, -1.6, 0x9a5a48, 8);
-      b.box(2.4, 2.4, 2.4, 2.2, 4.5, 1.4, 0xb8bec5);
-    } else if (level === 2) {
-      b.box(7, 4.5, 4.4, 0, 0, -1.4, 0xd0d6dd, { windows: true });
-      b.box(4.4, 3.6, 3.2, -1.2, 0, 2.4, 0xc4cad1, { windows: true });
-      b.box(7.2, 0.5, 4.6, 0, 4.5, -1.4, 0x6f7983);
-      b.cylinder(0.55, 0.65, 8, 2.4, 4.5, -2.2, 0x9a5a48, 8);
-      b.cylinder(0.55, 0.65, 6.5, 0.8, 4.5, -2.2, 0x9a5a48, 8);
-      b.cylinder(1.1, 1.1, 3.2, 2.8, 0, 2.6, 0xe8e0c8, 10);
-    } else {
-      b.box(7, 5, 5.2, 0, 0, -1.2, 0xcdd3da, { windows: true });
-      b.box(7.2, 0.5, 5.4, 0, 5, -1.2, 0x5f6973);
-      b.cylinder(1.4, 1.4, 4.6, -2.4, 0, 2.6, 0xe8e0c8, 12);
-      b.cylinder(1.4, 1.4, 4.6, 0.4, 0, 2.6, 0xe8e0c8, 12);
-      b.cylinder(0.5, 0.6, 9, 2.4, 5, -2.6, 0x8d9aa6, 8);
-      b.box(2, 1.4, 2, 2.4, 5.4, 1.4, 0xaab3ba);
-    }
-  }
-  return b.build();
-}
+export { zoneModel, zoneVariantCount } from './zoneModels';
 
 // ---------------- службы ----------------
 
@@ -206,6 +132,56 @@ serviceModels.set('waterplant', () =>
     .build(),
 );
 
+serviceModels.set('landfill', () => {
+  const s = CELL * 3 - 1;
+  const b = new GeomBuilder().box(s, 0.25, s, 0, 0, 0, 0x7a7058).cone(8, 5, -3, 0.2, -2, 0x6b6150, 9).cone(6, 4, 4, 0.2, 3, 0x756a55, 8).cone(4, 3, 4, 0.2, -5, 0x81765e, 8);
+  for (const [x, z, c] of [[-4, 4, 0xc0504d], [-1, 6, 0x4a90c0], [6, 0, 0xd8c04a], [0, -6, 0x6aa86a], [-7, -3, 0xb0b0b0]] as [number, number, number][]) b.box(1.2, 0.5, 0.9, x, 0.25, z, c);
+  b.box(3.6, 2.4, 3, 8, 0, 8, 0xb9bec3, { windows: true }).box(0.15, 1.6, s, -s / 2, 0, 0, 0x8a8f96).box(s, 1.6, 0.15, 0, 0, -s / 2, 0x8a8f96);
+  return b.build();
+});
+serviceModels.set('incinerator', () =>
+  new GeomBuilder()
+    .box(9, 6, 7, 0, 0, 2.4, 0x8e949a, { windows: true })
+    .box(5, 10, 5, -2, 0, -3, 0x6e747a)
+    .cylinder(1.1, 1.4, 20, 2.4, 0, -4, 0x9a4a3a, 10)
+    .cylinder(1.15, 1.15, 1.2, 2.4, 18, -4, 0x2e2e2e, 10)
+    .box(9.4, 0.4, 7.4, 0, 6, 2.4, 0x5a5f65)
+    .box(2.6, 3, 0.3, 2, 0, 6, 0xd8a21f)
+    .build(),
+);
+serviceModels.set('cemetery', () => {
+  const s = CELL * 3 - 1;
+  const b = new GeomBuilder().box(s, 0.16, s, 0, 0, 0, 0x5f9c58).box(1.4, 0.2, s, 0, 0, 0, 0xcfc6a8).box(s, 0.2, 1.4, 0, 0, 0, 0xcfc6a8);
+  for (let i = -2; i <= 2; i++) for (const z of [-6, -3.6, 3.6, 6]) {
+    if (Math.abs(i) < 1) continue;
+    b.box(0.9, 1.2, 0.3, i * 3.2, 0.1, z, 0xb7bcc0).box(0.5, 0.5, 0.32, i * 3.2, 0.9, z, 0xa6acb0);
+  }
+  b.box(3.2, 2.6, 2.6, 0, 0, -7, 0xd9d1c0, { windows: true }).box(3.6, 0.3, 3, 0, 2.6, -7, 0x6d625a);
+  b.cylinder(0.2, 0.25, 4, -8, 0, 8, 0x5a4232, 5).cone(1.6, 4, -8, 1.6, 8, 0x2f6b3a, 7).cone(1.4, 3.6, 8, 1.2, 8, 0x2f6b3a, 7);
+  return b.build();
+});
+serviceModels.set('crematorium', () =>
+  new GeomBuilder()
+    .box(8, 4, 6, 0, 0, 0, 0xcfc8bb, { windows: true })
+    .box(8.4, 0.4, 6.4, 0, 4, 0, 0x6d625a)
+    .cylinder(0.8, 1, 10, 2.6, 0, -1.6, 0x77706a, 8)
+    .cylinder(0.85, 0.85, 0.8, 2.6, 10, -1.6, 0x2e2e2e, 8)
+    .box(2, 2.8, 0.3, -1.6, 0, 3.1, 0x4a4036)
+    .build(),
+);
+serviceModels.set('busdepot', () =>
+  new GeomBuilder()
+    .box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0x595e63)
+    .box(11, 5, 6, 0, 0.2, -4, 0xd7dde3, { windows: true })
+    .box(11.4, 0.5, 6.4, 0, 5.2, -4, 0x2d7a4f)
+    .box(2.6, 3.6, 0.3, -3.6, 0.2, -0.9, 0x2a3b57)
+    .box(2.6, 3.6, 0.3, 0, 0.2, -0.9, 0x2a3b57)
+    .box(2.6, 3.6, 0.3, 3.6, 0.2, -0.9, 0x2a3b57)
+    .box(5, 0.1, 0.4, -3, 0.25, 5, 0xffffff)
+    .box(5, 0.1, 0.4, 4, 0.25, 5, 0xffffff)
+    .build(),
+);
+
 /** Геометрия службы по ключу модели (fallback — серая коробка). */
 export function serviceModel(key: string, w: number, h: number): BufferGeometry {
   const f = serviceModels.get(key);
@@ -237,6 +213,29 @@ export function busModel(): BufferGeometry {
   for (const [x, z] of [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]]) {
     b.cylinder(0.45, 0.45, 0.3, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
   }
+  return b.build();
+}
+
+function wheels(b: GeomBuilder, pts: [number, number][], r = 0.4): void {
+  for (const [x, z] of pts) b.cylinder(r, r, 0.3, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
+}
+
+export function policeModel(): BufferGeometry {
+  const b = new GeomBuilder().box(3.6, 0.8, 1.7, 0, 0.35, 0, 0xf2f4f7).box(1.7, 0.7, 1.45, -0.2, 1.1, 0, 0x30415e).box(0.9, 0.9, 0.12, 0, 0.4, 0.86, 0x2b58b8).box(0.9, 0.9, 0.12, 0, 0.4, -0.86, 0x2b58b8);
+  b.box(0.3, 0.2, 0.5, -0.2, 1.8, 0.35, 0xd33a3a).box(0.3, 0.2, 0.5, -0.2, 1.8, -0.35, 0x3a6ad3);
+  wheels(b, [[1.1, 0.85], [1.1, -0.85], [-1.1, 0.85], [-1.1, -0.85]], 0.36);
+  return b.build();
+}
+
+export function garbageModel(): BufferGeometry {
+  const b = new GeomBuilder().box(1.6, 1.8, 2, 2.1, 0.4, 0, 0xe8d24a).box(4.6, 2.3, 2.1, -1, 0.5, 0, 0x3f8f5a).box(4.6, 0.3, 2.2, -1, 2.8, 0, 0x2c6b42);
+  wheels(b, [[2.1, 1], [2.1, -1], [-2, 1], [-2, -1], [-0.6, 1], [-0.6, -1]], 0.42);
+  return b.build();
+}
+
+export function hearseModel(): BufferGeometry {
+  const b = new GeomBuilder().box(4.4, 0.9, 1.7, 0, 0.35, 0, 0x1f2024).box(1.6, 0.7, 1.5, 1, 1.15, 0, 0x2a2c32).box(2.4, 0.85, 1.55, -1, 1.15, 0, 0xcfd3d8).box(2.4, 0.15, 0.4, -1, 2, 0, 0x9aa0a6);
+  wheels(b, [[1.4, 0.86], [1.4, -0.86], [-1.4, 0.86], [-1.4, -0.86]], 0.36);
   return b.build();
 }
 

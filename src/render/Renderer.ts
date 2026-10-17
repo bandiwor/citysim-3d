@@ -16,8 +16,11 @@ import { clamp, smoothstep } from '../core/Rng';
 import { AlertView } from './AlertView';
 import { BuildingView } from './BuildingView';
 import { CameraController } from './CameraController';
+import { PedestrianView } from './PedestrianView';
 import { PreviewView } from './PreviewView';
 import { RoadView } from './RoadView';
+import { RouteView } from './RouteView';
+import { TrafficLightView } from './TrafficLightView';
 import { TerrainView } from './TerrainView';
 import { TreeView } from './TreeView';
 import { VehicleView } from './VehicleView';
@@ -26,6 +29,9 @@ import { OverlayView, ZoneLayerView } from './ZoneLayerView';
 
 const DAY_SKY = new Color(0x8fc4ee);
 const DUSK_SKY = new Color(0xe9a070);
+const DAWN_SKY = new Color(0xf4a99a);
+const WARM_SUN = new Color(1, 0.52, 0.28);
+const WHITE_SUN = new Color(1, 0.96, 0.88);
 const NIGHT_SKY = new Color(0x0b1226);
 
 /** Сцена, свет, смена дня/ночи, тени и список видов. */
@@ -36,6 +42,8 @@ export class Renderer {
   readonly preview: PreviewView;
   readonly zoneLayer: ZoneLayerView;
   readonly buildings: BuildingView;
+  readonly routes: RouteView;
+  readonly pedestrians: PedestrianView;
   shadows = true;
   /** ночь 0..1 для звука и освещения */
   night = 0;
@@ -66,17 +74,23 @@ export class Renderer {
     this._sun.shadow.normalBias = 0.6;
     this.scene.add(this._sun, this._sun.target, this._hemi, this._amb);
 
-    new TerrainView(this.scene, _game.world);
+    const terrain = new TerrainView(this.scene, _game.world, _game);
     this.buildings = new BuildingView(this.scene, _game);
+    this.routes = new RouteView(this.scene, _game);
+    this.pedestrians = new PedestrianView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance }));
     this.preview = new PreviewView(this.scene);
     this.zoneLayer = new ZoneLayerView(this.scene, _game);
     this._views.push(
+      terrain,
       new RoadView(this.scene, _game),
       this.zoneLayer,
       new OverlayView(this.scene, _game),
       this.buildings,
       new TreeView(this.scene, _game),
+      new TrafficLightView(this.scene, _game),
       new VehicleView(this.scene, _game),
+      this.routes,
+      this.pedestrians,
       new AlertView(this.scene, _game),
     );
     window.addEventListener('resize', () => this.resize());
@@ -119,8 +133,10 @@ export class Renderer {
     this._sun.target.position.copy(tgt);
     this._sun.position.copy(tgt).addScaledVector(dir, 400);
     this._sun.intensity = 2.3 * day;
-    this._sun.color.setRGB(1, 0.85 + 0.15 * day, 0.7 + 0.3 * day);
+    // золотой час: у горизонта солнце оранжевое, днём — почти белое
+    this._sun.color.copy(WARM_SUN).lerp(WHITE_SUN, smoothstep(0.04, 0.55, height));
     this._hemi.intensity = 0.55 + 0.2 * day;
+    this._hemi.color.setHex(0xbfdcff).lerp(tod < 0.5 ? DAWN_SKY : DUSK_SKY, dusk * 0.45 * day);
     this._amb.intensity = 0.55 * (1 - day) + 0.1;
 
     const half = clamp(this.camera.distance * 0.75, 90, 260);
@@ -135,7 +151,7 @@ export class Renderer {
       sc.updateProjectionMatrix();
     }
 
-    this._sky.copy(NIGHT_SKY).lerp(DAY_SKY, day).lerp(DUSK_SKY, dusk * 0.45 * (day > 0.02 ? 1 : 0.4));
+    this._sky.copy(NIGHT_SKY).lerp(DAY_SKY, day).lerp(tod < 0.5 ? DAWN_SKY : DUSK_SKY, dusk * 0.6 * (day > 0.02 ? 1 : 0.4));
     (this.scene.background as Color).copy(this._sky);
     (this.scene.fog as Fog).color.copy(this._sky);
     this.night = this.dayNight ? 1 - smoothstep(-0.05, 0.25, height) : 0;

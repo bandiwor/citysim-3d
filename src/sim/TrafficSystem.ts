@@ -2,6 +2,7 @@ import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building } from '../core/types';
 import type { PathStep } from './NetworkSystem';
+import { lightGroups, lightState } from './lights';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -9,7 +10,7 @@ declare module '../core/Game' {
   }
 }
 
-export type VehicleKind = 'car' | 'truck' | 'bus';
+export type VehicleKind = 'car' | 'truck' | 'bus' | 'police' | 'garbage' | 'hearse';
 
 export interface Vehicle {
   id: number;
@@ -38,6 +39,10 @@ export interface Vehicle {
   dead: boolean;
   /** Вызывается по прибытии. Вернуть true, если машина продолжает жить (ей назначен новый путь). */
   onArrive?: (v: Vehicle) => boolean;
+  /** произвольные данные владельца (маршрут автобуса, груз…) */
+  data?: Record<string, unknown>;
+  /** где остановиться из-за красного/очереди на текущем ребре (undefined — свободно) */
+  stopS?: number;
 }
 
 interface PendingTrip {
@@ -73,6 +78,9 @@ export class TrafficSystem implements System {
   private _inds: Building[] = [];
   private _listVersion = -1;
   private _graphVersion = -1;
+  private _groups = new Map<number, Map<number, 0 | 1>>();
+  private _groupsVersion = -1;
+  private _load = new Map<number, number>();
 
   init(game: Game): void {
     this._game = game;
@@ -113,7 +121,7 @@ export class TrafficSystem implements System {
   spawn(steps: PathStep[] | null, fromS: number, endS: number, kind: VehicleKind, color?: number): Vehicle | null {
     const c = this._game.config.traffic;
     if (!steps || !steps.length) return null;
-    if (this.vehicles.length >= c.maxVehicles + (kind === 'bus' ? c.busExtra : 0)) return null;
+    if (this.vehicles.length >= c.maxVehicles + (kind === 'car' || kind === 'truck' ? 0 : c.busExtra)) return null;
     const graph = this._game.world.graph;
     if (steps.some((s) => !graph.edges.has(s.edge))) return null;
     const [lo, hi] = c.speedMul[kind] ?? [1, 1];
@@ -216,11 +224,8 @@ export class TrafficSystem implements System {
     const pool = Math.random() < c.shopShare && this._shops.length ? this._shops : this._works;
     const dest = pool[Math.floor(Math.random() * pool.length)];
     if (!dest || dest.comp !== home.comp || dest.comp < 0) return;
-    const transit = g.get('transit');
-    if (Math.random() < transit.share(home.x, home.z)) {
-      transit.rider();
-      return;
-    }
+    // часть жителей пользуется автобусами: они появятся пассажирами на остановках, а не машинами
+    if (Math.random() < g.get('transit').share(home.x, home.z)) return;
     const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
     this._trip(home, dest, 'car', color, (v) => {
       v.onArrive = () => {
@@ -281,13 +286,74 @@ export class TrafficSystem implements System {
 
   // ---------- движение ----------
 
+  /** Группа фазы светофора подхода (ребро → группа) для узла; кэш сбрасывается при изменении графа. */
+  groupOf(nodeId: number, edgeId: number): 0 | 1 {
+    const graph = this._game.world.graph;
+    if (this._groupsVersion !== graph.version) {
+      this._groups.clear();
+      this._groupsVersion = graph.version;
+    }
+    let g = this._groups.get(nodeId);
+    if (!g) {
+      const node = graph.nodes.get(nodeId);
+      g = node ? lightGroups(graph, node) : new Map();
+      this._groups.set(nodeId, g);
+    }
+    return g.get(edgeId) ?? 0;
+  }
+
+  /** Сигнал светофора узла для подхода по ребру. */
+  signal(nodeId: number, edgeId: number): 'green' | 'yellow' | 'red' {
+    return lightState(this.groupOf(nodeId, edgeId), this._clock, this._game.config.roads);
+  }
+
+  /** Перед шагом: красные светофоры формируют очереди; загруженные перекрёстки без светофора замедляют проезд. */
+  private _prepare(): void {
+    const game = this._game;
+    const graph = game.world.graph;
+    const rc = game.config.roads;
+    this._load.clear();
+    const queues = new Map<string, { v: Vehicle; d: number; limit: number; dir: number }[]>();
+    for (const v of this.vehicles) {
+      v.stopS = undefined;
+      if (v.dead || v.wait > 0) continue;
+      const step = v.steps[v.i];
+      const e = graph.edges.get(step.edge);
+      if (!e) continue;
+      const nodeId = step.dir > 0 ? e.b : e.a;
+      const node = graph.nodes.get(nodeId);
+      if (!node || node.edges.length < 3) continue;
+      const d = step.dir > 0 ? e.len - v.s : v.s;
+      const last = v.i === v.steps.length - 1;
+      if (d < rc.junctionRadius) this._load.set(nodeId, (this._load.get(nodeId) ?? 0) + 1);
+      if (node.light && !last && d < 70 && d > -1) {
+        const sig = this.signal(nodeId, e.id);
+        if (sig === 'green' || (sig === 'yellow' && d < rc.lightStop + 3)) continue;
+        const key = `${e.id}:${step.dir}`;
+        let arr = queues.get(key);
+        if (!arr) queues.set(key, (arr = []));
+        arr.push({ v, d, limit: step.dir > 0 ? e.len - rc.lightStop : rc.lightStop, dir: step.dir });
+      }
+    }
+    for (const arr of queues.values()) {
+      arr.sort((a, b) => a.d - b.d);
+      arr.forEach((q, i) => {
+        // уже миновавшие стоп-линию не тормозят
+        if (q.dir > 0 ? q.v.s > q.limit + 0.5 : q.v.s < q.limit - 0.5) return;
+        q.v.stopS = q.limit - q.dir * i * rc.queueGap;
+      });
+    }
+  }
+
   private _move(dt: number): void {
     const game = this._game;
     const graph = game.world.graph;
+    this._prepare();
     const decay = Math.exp(-dt * game.config.traffic.offsetDecay);
     let flowSum = 0;
     let flowN = 0;
     const net = game.get('network');
+    const rc = game.config.roads;
     for (const v of this.vehicles) {
       if (v.dead) continue;
       v.ox *= decay;
@@ -310,10 +376,19 @@ export class TrafficSystem implements System {
       }
       const type = game.roadTypes.at(e.type);
       const k = (this.occupancy.get(e.id) ?? 0) / net.capacityOf(e);
-      const f = Math.max(game.config.traffic.minFlow, 1 / (1 + k * k * game.config.traffic.congestionPower));
+      let f = Math.max(game.config.traffic.minFlow, 1 / (1 + k * k * game.config.traffic.congestionPower));
+      const nodeId = step.dir > 0 ? e.b : e.a;
+      const node = graph.nodes.get(nodeId);
+      if (node && node.edges.length >= 3 && !node.light && (this._load.get(nodeId) ?? 0) > rc.junctionBusy) {
+        const d = step.dir > 0 ? e.len - v.s : v.s;
+        if (d < rc.junctionRadius) f *= rc.junctionPenalty;
+      }
       flowSum += f;
       flowN++;
-      v.s += step.dir * type.speed * f * v.speedMul * dt;
+      const urgent = v.kind === 'police' ? 1.3 : 1;
+      let ns = v.s + step.dir * type.speed * f * v.speedMul * urgent * dt;
+      if (v.stopS !== undefined) ns = step.dir > 0 ? Math.min(ns, Math.max(v.s, v.stopS)) : Math.max(ns, Math.min(v.s, v.stopS));
+      v.s = ns;
 
       const last = v.i === v.steps.length - 1;
       const limit = last ? v.endS : step.dir > 0 ? e.len : 0;

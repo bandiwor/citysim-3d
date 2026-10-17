@@ -59,6 +59,11 @@ export class GrowthSystem implements System {
       (b.powered ? h.powerOn : h.powerOff) +
       (b.watered ? h.waterOn : h.waterOff);
     if (g.zoneTypes.get(b.zone)?.housing) v += h.unemployment * st.unemployment * Math.min(1, st.population / h.unemploymentPop);
+    // невывезенный мусор, тела и ограбления портят настроение
+    const gc = g.config.garbage;
+    if (b.garbage > gc.cap * gc.unhappyAt) v += gc.unhappy;
+    if (b.dead > 0) v += g.config.death.unhappy * Math.min(1, b.dead / 3);
+    if (b.incident > 0) v += g.config.crime.unhappy;
     return clamp(v, 0, 1);
   }
 

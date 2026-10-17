@@ -9,6 +9,10 @@ export class CameraController {
   yaw = Math.PI * 0.25;
   pitch = 0.9;
   distance = 190;
+  /** камерой управляет другой контроллер (первое лицо / следование) */
+  external = false;
+  private _follow: (() => { x: number; z: number } | null) | null = null;
+  private _saved: { target: Vector3; yaw: number; pitch: number; distance: number; fov: number; near: number } | null = null;
   private _goal = { target: new Vector3(), yaw: 0, pitch: 0, distance: 0 };
   private _keys = new Set<string>();
   private _plane = new Plane(new Vector3(0, 1, 0), 0);
@@ -52,12 +56,46 @@ export class CameraController {
 
   /** Сдвиг по экрану в пикселях → по земле. */
   panPixels(dx: number, dy: number): void {
+    this._follow = null;
     const k = (this.distance / this._el.clientHeight) * 1.25;
     const sy = Math.sin(this.yaw);
     const cy = Math.cos(this.yaw);
     this._goal.target.x -= (dx * cy + dy * sy * 1.2) * k;
     this._goal.target.z -= (-dx * sy + dy * cy * 1.2) * k;
     this._clampGoal();
+  }
+
+  /** Камера плавно следует за точкой, пока не будет сдвинута вручную (null — прекратить). */
+  follow(fn: (() => { x: number; z: number } | null) | null): void {
+    this._follow = fn;
+  }
+
+  get following(): boolean {
+    return !!this._follow;
+  }
+
+  /** Запомнить обзорную камеру и отдать управление (первое лицо). */
+  detach(): void {
+    this._saved = { target: this.target.clone(), yaw: this._goal.yaw, pitch: this._goal.pitch, distance: this._goal.distance, fov: this.camera.fov, near: this.camera.near };
+    this.external = true;
+    this._follow = null;
+  }
+
+  /** Вернуть обзорную камеру к сохранённому виду, но над точкой (x, z). */
+  attach(x: number, z: number): void {
+    const s = this._saved;
+    this.external = false;
+    if (!s) return;
+    this.camera.fov = s.fov;
+    this.camera.near = s.near;
+    this.camera.updateProjectionMatrix();
+    this._goal.target.set(x, 0, z);
+    this._clampGoal();
+    this.target.copy(this._goal.target);
+    this._goal.yaw = this.yaw = s.yaw;
+    this._goal.pitch = this.pitch = s.pitch;
+    this._goal.distance = this.distance = Math.min(s.distance, 160);
+    this._saved = null;
   }
 
   focus(x: number, z: number): void {
@@ -71,7 +109,15 @@ export class CameraController {
   }
 
   update(dt: number): void {
+    if (this.external) return;
     const g = this._goal;
+    if (this._follow) {
+      const f = this._follow();
+      if (f) {
+        g.target.set(f.x, 0, f.z);
+        this._clampGoal();
+      } else this._follow = null;
+    }
     const k = this._keys;
     const speed = this.distance * this._cfg.panSpeed * dt;
     let fx = 0;
@@ -81,6 +127,7 @@ export class CameraController {
     if (k.has('KeyA') || k.has('ArrowLeft')) fx -= 1;
     if (k.has('KeyD') || k.has('ArrowRight')) fx += 1;
     if (fx || fz) {
+      this._follow = null;
       const sy = Math.sin(g.yaw);
       const cy = Math.cos(g.yaw);
       g.target.x += (fx * cy + fz * sy) * speed;

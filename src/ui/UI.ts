@@ -5,7 +5,10 @@ import { onLocaleChange, setLocale, t } from '../i18n';
 import type { Renderer } from '../render/Renderer';
 import { Terrain } from '../world/Terrain';
 import { h } from './dom';
-import { Hud } from './Hud';
+import { Clock, Hud } from './Hud';
+import { RouteTool } from '../tools/MoreTools';
+import { FirstPerson } from '../render/FirstPerson';
+import { cityBody, routesBody } from './TransitPanel';
 import { Input } from './Input';
 import { budgetBody, helpBody, Inspector, Modal, settingsBody, statsBody } from './Panels';
 import { Toolbar } from './Toolbar';
@@ -19,9 +22,17 @@ export class UI {
   private _info = h('div', { class: 'cell-info' });
   private _mapsMenu = h('div', { class: 'panel maps-menu', style: 'display:none' });
   private _parts: { dispose(): void }[] = [];
+  readonly fp: FirstPerson;
+  private _fpBar = h('div', { class: 'fp-bar', style: 'display:none' });
 
   constructor(private _root: HTMLElement, private _game: Game, private _renderer: Renderer, canvas: HTMLCanvasElement, private _audio: AudioEngine, private _onExit: () => void) {
     this.input = new Input(canvas, _renderer, _game);
+    this.fp = new FirstPerson(_game, _renderer, canvas, (v) => {
+      this.input.locked = v;
+      if (v) this.input.clearPreview();
+    });
+    _renderer.addView(this.fp);
+    this.fp.onChange = (on) => this._fpMode(on);
     this.input.onHint = (text, x, y) => {
       this._hint.style.display = text ? 'block' : 'none';
       this._hint.textContent = text;
@@ -31,8 +42,13 @@ export class UI {
     _game.bus.on('message', (m) => this._toast(t(m.key, m.params), m.kind));
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
+      if (this.fp.active) return;
       if (e.code === 'KeyB') this.openBudget();
+      if (this.fp.active) return;
       if (e.code === 'KeyG' && !e.ctrlKey) this.openStats();
+      if (e.code === 'KeyT') this.openRoutes();
+      if (e.code === 'KeyH') this.openCity();
+      if (e.code === 'KeyP') this.enterWalk();
       if (e.code === 'Escape' && this._modal.isOpen) this._modal.close();
     });
     _root.addEventListener('click', (e) => {
@@ -48,11 +64,28 @@ export class UI {
   build(): void {
     for (const p of this._parts) p.dispose();
     const g = this._game;
-    const hud = new Hud(g, { menu: () => this._menu(), budget: () => this.openBudget(), stats: () => this.openStats(), maps: (btn) => this._toggleMaps(btn) });
+    const hud = new Hud(g, {
+      menu: () => this._menu(),
+      budget: () => this.openBudget(),
+      stats: () => this.openStats(),
+      maps: (btn) => this._toggleMaps(btn),
+      routes: () => this.openRoutes(),
+      city: () => this.openCity(),
+      walk: () => this.enterWalk(),
+      settings: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, renderer: this._renderer, audio: this._audio, onLocale: (l) => setLocale(l) })),
+      help: () => this._modal.open(t('menu.help'), helpBody()),
+      save: () => g.get('save').save(),
+    });
+    const clock = new Clock(g);
     const toolbar = new Toolbar(g, () => this.input.tool);
     const inspector = new Inspector(g);
-    this._parts = [hud, toolbar, inspector];
-    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, this._toasts, this._hint, this._info, this._mapsMenu, this._modal.el);
+    this._parts = [hud, toolbar, inspector, clock];
+    this._fpBar.replaceChildren(
+      h('div', { class: 'fp-cross' }),
+      h('div', { class: 'fp-help', text: t('fp.help') }),
+      h('button', { class: 'btn', text: `⏎ ${t('fp.exit')}`, onclick: () => this.fp.exit() }),
+    );
+    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._modal.el);
     this._modal.close();
     this._mapsMenu.style.display = 'none';
     if (this.input.toolId) g.bus.emit('tool:set', this.input.toolId);
@@ -61,6 +94,52 @@ export class UI {
   openBudget(): void {
     const b = budgetBody(this._game);
     this._modal.open(`💰 ${t('modal.budget')}`, b.el, () => b.tick());
+  }
+
+  openRoutes(): void {
+    const tr = this._game.get('transit');
+    const r = routesBody(this._game, {
+      create: () => {
+        this._modal.close();
+        this.input.setTool('route');
+      },
+      edit: (id) => {
+        this._modal.close();
+        this.input.setTool('route');
+        (this.input.tool as RouteTool).setRoute(id);
+        tr.showRoutes = true;
+        this._renderer.routes.setFocus(id);
+      },
+      track: (id) => {
+        const bus = tr.busOf(id);
+        if (!bus) return this._game.message('msg.noBus', undefined, 'warn');
+        this._modal.close();
+        this._renderer.camera.follow(() => {
+          const v = tr.busOf(id);
+          return v ? { x: v.x, z: v.z } : null;
+        });
+        this._renderer.camera.distance = Math.min(this._renderer.camera.distance, 90);
+      },
+      focus: (id) => this._renderer.routes.setFocus(id),
+    });
+    this._modal.open(`🚌 ${t('modal.routes')}`, r.el, () => r.tick());
+  }
+
+  openCity(): void {
+    const c = cityBody(this._game);
+    this._modal.open(`🏙️ ${t('modal.city')}`, c.el, () => c.tick());
+  }
+
+  enterWalk(): void {
+    const tgt = this._renderer.camera.target;
+    this._modal.close();
+    this._game.bus.emit('fp:enter', { x: tgt.x, z: tgt.z });
+  }
+
+  private _fpMode(on: boolean): void {
+    this._root.classList.toggle('fp-mode', on);
+    this._fpBar.style.display = on ? 'flex' : 'none';
+    if (on) this._game.bus.emit('select', null);
   }
 
   openStats(): void {

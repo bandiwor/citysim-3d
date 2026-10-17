@@ -3,7 +3,7 @@ import type { PreviewState, Tool, ToolContext } from '../core/Tool';
 import type { Pointer } from '../core/types';
 import type { Renderer } from '../render/Renderer';
 
-const emptyPreview = (): PreviewState => ({ quads: [], ribbon: null, ring: null, marker: null, hint: '' });
+const emptyPreview = (): PreviewState => ({ quads: [], ribbon: null, ring: null, marker: null, marks: [], hint: '' });
 
 /** Ввод мыши/клавиатуры: управление камерой и передача событий активному инструменту. */
 export class Input implements ToolContext {
@@ -16,6 +16,9 @@ export class Input implements ToolContext {
   private _last = { x: 0, y: 0 };
   private _moved = 0;
   private _down = false;
+  private _lastP: Pointer | null = null;
+  /** первое лицо: ввод инструментов отключён */
+  locked = false;
   private _preview = emptyPreview();
   onHint: (text: string, x: number, y: number) => void = () => {};
   onHover: (p: Pointer | null) => void = () => {};
@@ -25,6 +28,10 @@ export class Input implements ToolContext {
     _canvas.addEventListener('pointerdown', (e) => this._onDown(e));
     window.addEventListener('pointermove', (e) => this._onMove(e));
     window.addEventListener('pointerup', (e) => this._onUp(e));
+    window.addEventListener('pointercancel', () => this._reset());
+    window.addEventListener('blur', () => this._reset());
+    document.addEventListener('pointerleave', () => this._leave());
+    _canvas.addEventListener('pointerleave', () => this._leave());
     _canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => this._onKey(e));
     window.addEventListener('keyup', (e) => (this.shift = e.shiftKey));
@@ -53,6 +60,11 @@ export class Input implements ToolContext {
     this.game.bus.emit('tool:set', id);
   }
 
+  /** Каждый кадр: повторяющиеся действия инструмента (кисть рельефа). */
+  tick(dt: number): void {
+    if (!this.locked) this.tool?.tick?.(dt, this);
+  }
+
   setPreview(p: Partial<PreviewState>): void {
     this._preview = { ...this._preview, ...p };
     this._renderer.preview.apply(this._preview);
@@ -70,7 +82,27 @@ export class Input implements ToolContext {
     return p ? { x: p.x, z: p.z, shift: e.shiftKey } : null;
   }
 
+  /** Курсор ушёл с карты: убрать кисть/подсветку и прервать зажатый ввод. */
+  private _leave(): void {
+    if (this._down) return;
+    this._lastP = null;
+    this.tool?.hover?.(null, this);
+    this.clearPreview();
+    this.onHover(null);
+  }
+
+  /** Потеря фокуса / отмена указателя: завершить зажатый ввод, не оставляя «залипшей» кисти. */
+  private _reset(): void {
+    if (this._down && this._btn === 0 && this.tool && this._lastP && !this.tool.panOnDrag) this.tool.up?.(this._lastP, this);
+    this._down = false;
+    this._btn = -1;
+    this._lastP = null;
+    this.tool?.hover?.(null, this);
+    this.clearPreview();
+  }
+
   private _onDown(e: PointerEvent): void {
+    if (this.locked) return;
     this._canvas.setPointerCapture(e.pointerId);
     this._btn = e.button;
     this._last = { x: e.clientX, y: e.clientY };
@@ -88,6 +120,7 @@ export class Input implements ToolContext {
     const dy = e.clientY - this._last.y;
     this._last = { x: e.clientX, y: e.clientY };
     this.shift = e.shiftKey;
+    if (this.locked) return;
     const overCanvas = e.target === this._canvas;
     if (this._down) {
       this._moved += Math.abs(dx) + Math.abs(dy);
@@ -96,8 +129,9 @@ export class Input implements ToolContext {
       else if (this._btn === 1) cam.panPixels(dx, dy);
       else if (this._btn === 0 && this.tool?.panOnDrag && this._moved > 4) cam.panPixels(dx, dy);
     }
-    if (!overCanvas && !this._down) return;
+    if (!overCanvas && !this._down) return this._leave();
     const p = this._pointer(e);
+    if (p) this._lastP = p;
     this.onHover(p);
     if (!this.tool) return;
     if (this._down && this._btn === 0 && p && !this.tool.panOnDrag) this.tool.move?.(p, this);
@@ -110,7 +144,7 @@ export class Input implements ToolContext {
     this._down = false;
     const btn = this._btn;
     this._btn = -1;
-    const p = this._pointer(e);
+    const p = this._pointer(e) ?? this._lastP;
     if (btn === 0 && this.tool && p) {
       if (!this.tool.panOnDrag || this._moved <= 4) this.tool.up?.(p, this);
     } else if (btn === 2 && this._moved < 5) this._escape();
@@ -120,13 +154,17 @@ export class Input implements ToolContext {
   private _escape(): void {
     if (this.tool?.escape?.(this)) return;
     if (this._toolId !== 'select') this.setTool('select');
-    else this.game.bus.emit('select', null);
+    else {
+      this.game.bus.emit('select', null);
+      this.clearPreview();
+    }
   }
 
   private _onKey(e: KeyboardEvent): void {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     this.shift = e.shiftKey;
     const g = this.game;
+    if (this.locked) return;
     if (this.tool?.key?.(e.code, this)) {
       this.game.bus.emit('tool:set', this._toolId);
       return;

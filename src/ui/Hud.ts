@@ -1,7 +1,7 @@
 import type { Game } from '../core/Game';
 import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, t } from '../i18n';
 import { h } from './dom';
-import { dateLabel } from './format';
+import { clockLabel, dateLabel, phaseIcon } from './format';
 
 /** Верхняя панель: дата, деньги, население, счастье, спрос RCI, скорость, меню. */
 export class Hud {
@@ -20,7 +20,7 @@ export class Hud {
   private _timer = 0;
   private _off: () => void;
 
-  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; maps(btn: HTMLElement): void }) {
+  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void }) {
     const bars = h('div', { class: 'rci', title: t('hud.demand') });
     for (const z of _game.zoneTypes.all()) {
       const fill = h('div', { class: 'rci-fill', style: `background:#${z.color.toString(16).padStart(6, '0')}` });
@@ -45,6 +45,16 @@ export class Hud {
       bars,
       h('div', { class: 'hud-spacer' }),
       mapsBtn,
+      h('div', { class: 'hud-group buttons' },
+        h('button', { class: 'btn icon', text: '💰', title: `${t('hud.budget')} (B)`, onclick: actions.budget }),
+        h('button', { class: 'btn icon', text: '📊', title: `${t('hud.stats')} (G)`, onclick: actions.stats }),
+        h('button', { class: 'btn icon', text: '🚌', title: `${t('hud.routes')} (T)`, onclick: actions.routes }),
+        h('button', { class: 'btn icon', text: '🗑️', title: `${t('hud.city')} (H)`, onclick: actions.city }),
+        h('button', { class: 'btn icon', text: '🚶', title: `${t('hud.walk')} (P)`, onclick: actions.walk }),
+        h('button', { class: 'btn icon', text: '💾', title: t('menu.save'), onclick: actions.save }),
+        h('button', { class: 'btn icon', text: '⚙️', title: t('menu.settings'), onclick: actions.settings }),
+        h('button', { class: 'btn icon', text: '❓', title: t('menu.help'), onclick: actions.help }),
+      ),
       speeds,
     );
     const off = _game.bus.on('speed:changed', () => this._refreshSpeed());
@@ -88,5 +98,31 @@ export class Hud {
       fill.style.top = v >= 0 ? `${50 - v * 50}%` : '50%';
       fill.style.opacity = v >= 0 ? '1' : '0.45';
     }
+  }
+}
+
+/** Игровые часы внизу экрана: время суток (как у освещения), дата, значок фазы дня. */
+export class Clock {
+  readonly el: HTMLElement;
+  private _icon = h('span', { class: 'clock-ic' });
+  private _time = h('span', { class: 'clock-t' });
+  private _date = h('span', { class: 'clock-d' });
+  private _timer: number;
+
+  constructor(private _game: Game) {
+    this.el = h('div', { class: 'clock', title: t('hud.clock') }, this._icon, h('div', { class: 'clock-c' }, this._time, this._date));
+    this._timer = window.setInterval(() => this.refresh(), 200);
+    this.refresh();
+  }
+
+  dispose(): void {
+    clearInterval(this._timer);
+  }
+
+  refresh(): void {
+    const time = this._game.get('time');
+    this._icon.textContent = phaseIcon(time.tod);
+    this._time.textContent = clockLabel(time.tod);
+    this._date.textContent = dateLabel(time);
   }
 }

@@ -10,6 +10,8 @@ export interface PreviewQuad {
   w: number;
   d: number;
   ok: boolean;
+  /** свой цвет вместо зелёного/красного (например, цвет зоны) */
+  color?: number;
 }
 
 export interface PreviewRibbon {
@@ -22,9 +24,11 @@ export interface PreviewState {
   quads: PreviewQuad[];
   ribbon: PreviewRibbon | null;
   /** кольцо кисти */
-  ring: { x: number; z: number; r: number; ok: boolean } | null;
+  ring: { x: number; z: number; r: number; ok: boolean; color?: number } | null;
   /** маркер привязки */
   marker: { x: number; z: number; ok: boolean } | null;
+  /** красные метки на местах, мешающих строительству */
+  marks: { x: number; z: number }[];
   /** подсказка у курсора (уже переведённая) */
   hint: string;
 }
@@ -54,6 +58,8 @@ export interface Tool {
   /** Показывать клетки зонирования. */
   showGrid?: boolean;
   options?: ToolOption[];
+  /** вызывается каждый кадр, пока инструмент активен (dt — реальное время) */
+  tick?(dt: number, ctx: ToolContext): void;
   activate?(ctx: ToolContext): void;
   deactivate?(ctx: ToolContext): void;
   hover?(p: Pointer | null, ctx: ToolContext): void;

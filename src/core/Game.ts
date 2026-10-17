@@ -91,6 +91,7 @@ export class Game {
   }
 
   addCategory(cat: ToolbarCategory): void {
+    if (this.categories.some((c) => c.id === cat.id)) return;
     this.categories.push(cat);
   }
 

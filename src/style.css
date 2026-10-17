@@ -447,7 +447,7 @@ input[type='range'] {
 .cell-info {
   position: fixed;
   right: 12px;
-  bottom: 12px;
+  bottom: 82px;
   color: var(--dim);
   font-size: 12px;
   background: var(--bg);
@@ -555,4 +555,144 @@ input[type='range'] {
 }
 .settings .slider {
   grid-template-columns: 150px 1fr 48px;
+}
+
+/* Часы */
+.clock {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  pointer-events: none;
+}
+.clock-ic {
+  font-size: 26px;
+}
+.clock-c {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.clock-t {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.clock-d {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* Маршруты */
+.routes-panel {
+  min-width: min(620px, 86vw);
+}
+.routes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.routes-head .dim,
+.dim {
+  color: var(--dim);
+  font-size: 12px;
+}
+.warn-line {
+  width: 100%;
+  color: var(--warn);
+  font-size: 13px;
+}
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.route-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.route-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.route-btns .cnt {
+  min-width: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+.chip {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: none;
+}
+.status.ok {
+  color: var(--good);
+}
+.status.broken,
+.status.noDepot {
+  color: var(--bad);
+}
+.status.short,
+.status.pending {
+  color: var(--warn);
+}
+.table .trow.neg span:last-child {
+  color: var(--bad);
+}
+
+/* Первое лицо */
+.fp-bar {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 16px;
+  gap: 16px;
+}
+.fp-bar .btn {
+  pointer-events: auto;
+  align-self: flex-end;
+}
+.fp-help {
+  align-self: flex-end;
+  padding: 8px 14px;
+  background: var(--bg);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.fp-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 3px #000;
+}
+.fp-mode .hud,
+.fp-mode .toolbar,
+.fp-mode .inspector,
+.fp-mode .cell-info,
+.fp-mode .cursor-hint {
+  display: none !important;
 }

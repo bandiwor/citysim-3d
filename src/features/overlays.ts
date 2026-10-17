@@ -104,4 +104,20 @@ export function registerOverlays(g: Game): void {
       paintBuilding(game, p, (b) => (b.kind === 'zone' ? goodBad(b.happiness * 1.2 - 0.1, 200) : null));
     },
   });
+  g.overlays.add({
+    id: 'garbage',
+    icon: '🗑️',
+    paint(game, p) {
+      const cap = game.config.garbage.cap;
+      paintBuilding(game, p, (b) => (b.kind === 'zone' ? goodBad(1 - b.garbage / cap, 200) : null));
+    },
+  });
+  g.overlays.add({
+    id: 'crime',
+    icon: '🚨',
+    paint(game, p) {
+      const rate = game.get('crime');
+      paintBuilding(game, p, (b) => (b.kind === 'zone' ? goodBad(1 - Math.min(1, rate.rateOf(b) / (game.config.crime.baseRate * 3)), 190) : null));
+    },
+  });
 }

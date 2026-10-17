@@ -6,6 +6,8 @@ export interface RoadNode {
   x: number;
   z: number;
   edges: number[];
+  /** на перекрёстке стоит светофор */
+  light: boolean;
 }
 
 export interface RoadEdge {
@@ -18,6 +20,8 @@ export interface RoadEdge {
   hw: number;
   /** к дороге подключаются здания и строятся зоны */
   access: boolean;
+  /** движение только от узла a к узлу b */
+  oneway: boolean;
   pts: Vec2[];
   cum: number[];
   len: number;
@@ -37,6 +41,7 @@ export interface EdgeInit {
   hw: number;
   access: boolean;
   bridge: boolean;
+  oneway?: boolean;
 }
 
 const SEG = 512;
@@ -52,15 +57,15 @@ export class RoadGraph {
   private _hash = new SpatialHash(16);
 
   addNode(x: number, z: number): RoadNode {
-    const n: RoadNode = { id: this._nid++, x, z, edges: [] };
+    const n: RoadNode = { id: this._nid++, x, z, edges: [], light: false };
     this.nodes.set(n.id, n);
     this.version++;
     return n;
   }
 
   /** Восстановление узла с известным id (загрузка сохранения). */
-  restoreNode(id: number, x: number, z: number): RoadNode {
-    const n: RoadNode = { id, x, z, edges: [] };
+  restoreNode(id: number, x: number, z: number, light = false): RoadNode {
+    const n: RoadNode = { id, x, z, edges: [], light };
     this.nodes.set(id, n);
     if (id >= this._nid) this._nid = id + 1;
     this.version++;
@@ -70,7 +75,7 @@ export class RoadGraph {
   /** Ломаная pts начинается в узле a и заканчивается в узле b. */
   addEdge(a: number, b: number, pts: Vec2[], init: EdgeInit, id?: number): RoadEdge {
     const cum = cumulative(pts);
-    const e: RoadEdge = { id: id ?? this._eid++, a, b, ...init, pts, cum, len: cum[cum.length - 1], rev: 0 };
+    const e: RoadEdge = { id: id ?? this._eid++, a, b, ...init, oneway: init.oneway ?? false, pts, cum, len: cum[cum.length - 1], rev: 0 };
     if (e.id >= this._eid) this._eid = e.id + 1;
     this.edges.set(e.id, e);
     this.nodes.get(a)!.edges.push(e.id);
@@ -127,7 +132,7 @@ export class RoadGraph {
 
     this._unindex(e);
     const oldB = this.nodes.get(e.b)!;
-    const init: EdgeInit = { type: e.type, hw: e.hw, access: e.access, bridge: e.bridge };
+    const init: EdgeInit = { type: e.type, hw: e.hw, access: e.access, bridge: e.bridge, oneway: e.oneway };
     e.b = node.id;
     e.pts = headPts;
     e.cum = cumulative(headPts);

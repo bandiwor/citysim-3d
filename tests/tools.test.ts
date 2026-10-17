@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { PreviewState, ToolContext } from '../src/core/Tool';
 import type { Pointer } from '../src/core/types';
 import { setLocale } from '../src/i18n';
-import { BulldozeTool, PlaceTool, RoadTool, SelectTool, StopTool, ZoneTool } from '../src/tools/Tools';
+import { StopTool } from '../src/tools/MoreTools';
+import { BulldozeTool, PlaceTool, RoadTool, SelectTool, ZoneTool } from '../src/tools/Tools';
 import { createGame, road } from './helpers';
 
 function ctx(game: ReturnType<typeof createGame>) {

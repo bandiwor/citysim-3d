@@ -15,6 +15,7 @@ function graph(nodes: [number, number][], edges: [number, number, number, number
     edgeLen: Float32Array.from(edges.map((e) => e[2])),
     edgeSpeed: Float32Array.from(edges.map((e) => e[3])),
     edgeCap: Float32Array.from(edges.map(() => 10)),
+    edgeOneway: new Uint8Array(edges.length),
     edgeIds: Int32Array.from(edges.map((_, i) => i + 100)),
     congestionPower: 2,
     minFlow: 0.05,

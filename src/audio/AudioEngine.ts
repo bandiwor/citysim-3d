@@ -369,7 +369,7 @@ export class AudioEngine {
     const ctx = this._ctx;
     if (!ctx || ctx.state !== 'running') return;
     const now = performance.now();
-    const gap = name === 'zone' ? 70 : 35;
+    const gap = name === 'zone' ? 70 : name === 'step' ? 150 : 35;
     if (now - (this._last.get(name) ?? 0) < gap) return;
     this._last.set(name, now);
     const bus = this._buses.sfx;
@@ -406,6 +406,17 @@ export class AudioEngine {
         break;
       case 'alarm':
         for (let i = 0; i < 4; i++) this._tone(bus, { freq: i % 2 ? 700 : 950, dur: 0.18, type: 'square', vol: 0.1, delay: i * 0.2 });
+        break;
+      case 'terraform':
+        this._burst(bus, { dur: 0.18, from: 700, to: 200, vol: 0.18, type: 'lowpass' });
+        this._tone(bus, { freq: 95, to: 60, dur: 0.14, vol: 0.2 });
+        break;
+      case 'step':
+        this._burst(bus, { dur: 0.07, from: 500, to: 180, vol: 0.12, type: 'lowpass' });
+        break;
+      case 'light':
+        this._tone(bus, { freq: 1100, dur: 0.06, vol: 0.1, type: 'square' });
+        this._tone(bus, { freq: 800, dur: 0.08, vol: 0.1, type: 'square', delay: 0.07 });
         break;
       case 'stop':
       case 'bus':

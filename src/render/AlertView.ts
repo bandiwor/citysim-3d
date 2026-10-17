@@ -27,7 +27,7 @@ export class AlertView implements View {
   private _timer = 0;
 
   constructor(private _scene: Scene, private _game: Game) {
-    this._mats = { power: icon('⚡'), water: icon('💧'), fire: icon('🔥'), road: icon('🚧') };
+    this._mats = { power: icon('⚡'), water: icon('💧'), fire: icon('🔥'), road: icon('🚧'), crime: icon('🚨'), garbage: icon('🗑️'), dead: icon('⚰️') };
   }
 
   update(realDt: number): void {
@@ -40,6 +40,9 @@ export class AlertView implements View {
       if (k >= this._game.config.render.alertLimit) break;
       let kind: string | null = null;
       if (b.fire > 0) kind = 'fire';
+      else if (b.incident > 0) kind = 'crime';
+      else if (b.dead > 0) kind = 'dead';
+      else if (b.garbage > this._game.config.garbage.cap * this._game.config.garbage.unhappyAt) kind = 'garbage';
       else if (!b.abandoned) {
         if (!b.access && (b.kind === 'zone' || b.powerNeed > 0)) kind = 'road';
         else if (!b.powered) kind = 'power';

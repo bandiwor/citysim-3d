@@ -4,7 +4,7 @@ import type { Building, BusStop } from '../core/types';
 import { obbContains, type Obb } from './geometry';
 import { RoadGraph } from './RoadGraph';
 import { SpatialHash } from './SpatialHash';
-import { Terrain, type TerrainData } from './Terrain';
+import { classifyTerrain, Terrain, type TerrainData } from './Terrain';
 import { ZoneGrid } from './ZoneGrid';
 
 export { CELL, Terrain };
@@ -22,6 +22,8 @@ export class World {
   readonly zones = new ZoneGrid();
   readonly buildings = new Map<number, Building>();
   stops: BusStop[] = [];
+  /** изменённые игроком вершины рельефа: индекс → высота (для сохранения) */
+  readonly terrainEdits = new Map<number, number>();
   /** растёт при добавлении/удалении зданий — для кэшей */
   version = 0;
   private _nextId = 1;
@@ -82,6 +84,18 @@ export class World {
       if (t === Terrain.Water) worst = t;
     }
     return worst;
+  }
+
+  /** Меняет высоту вершины и запоминает правку. */
+  setVertexHeight(i: number, j: number, h: number): void {
+    const k = j * (this.size + 1) + i;
+    this.heights[k] = h;
+    this.terrainEdits.set(k, h);
+  }
+
+  /** Пересчитывает классы клеток вокруг изменённых вершин (включительно). */
+  reclassify(i0: number, j0: number, i1: number, j1: number): void {
+    classifyTerrain(this.heights, this.terrain, this.size, this.cfg.world.flatEpsilon, i0 - 1, j0 - 1, i1, j1);
   }
 
   vertexHeight(i: number, j: number): number {

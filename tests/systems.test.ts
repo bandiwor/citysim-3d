@@ -7,6 +7,12 @@ import { flatTerrain } from '../src/world/Terrain';
 import { createGame, road, run, settle } from './helpers';
 
 /** Маленький город: дорога, станции, зоны. */
+function placeSnapped(g: ReturnType<typeof createGame>, id: string, x: number, z: number): void {
+  const s = g.builder.snapService(id, x, z);
+  const r = g.builder.placeService(id, s.x, s.z, s.rot);
+  expect(r.ok, `${id}: ${r.reasonKey}`).toBe(true);
+}
+
 async function town(opts: { power?: boolean; water?: boolean; zones?: boolean } = {}) {
   const g = createGame();
   road(g, 40, 100, 200, 100);
@@ -480,46 +486,69 @@ describe('TrafficSystem', () => {
 });
 
 describe('TransitSystem', () => {
-  it('две остановки в одной сети порождают автобусы, дающие долю поездок и расход', async () => {
+  /** дорога, депо и две остановки + маршрут между ними */
+  async function line(): Promise<{ g: ReturnType<typeof createGame>; routeId: number }> {
+    const g = createGame();
+    road(g, 40, 100, 260, 100);
+    placeSnapped(g, 'coal', 200, 130);
+    placeSnapped(g, 'busdepot', 70, 112);
+    expect(g.builder.placeStop(100, 100).ok).toBe(true);
+    expect(g.builder.placeStop(230, 100).ok).toBe(true);
+    await settle(g);
+    const tr = g.get('transit');
+    const r = tr.createRoute();
+    for (const s of g.world.stops) tr.addStop(r.id, s.id);
+    return { g, routeId: r.id };
+  }
+
+  it('маршрут считает путь, а автобусы выезжают только из депо', async () => {
+    const { g, routeId } = await line();
+    const tr = g.get('transit');
+    await run(g, 40);
+    const r = tr.routeById(routeId)!;
+    expect(r.status).toBe('ok');
+    expect(r.polyline.flat().length).toBeGreaterThan(2);
+    expect(tr.busesAlive()).toBeGreaterThan(0);
+    const depot = g.world.list().find((b) => b.defId === 'busdepot')!;
+    expect(r.fleet.every((v) => v.data?.depot === depot.id)).toBe(true);
+    expect(tr.upkeep()).toBe(2 * g.config.economy.stopUpkeep + tr.busesAlive() * g.config.economy.busUpkeep);
+  });
+
+  it('без депо автобусов нет, маршрут помечен noDepot', async () => {
+    const g = createGame();
+    road(g, 40, 100, 260, 100);
+    g.builder.placeStop(100, 100);
+    g.builder.placeStop(230, 100);
+    await settle(g);
+    const tr = g.get('transit');
+    const r = tr.createRoute();
+    for (const s of g.world.stops) tr.addStop(r.id, s.id);
+    await run(g, 30);
+    expect(tr.busesAlive()).toBe(0);
+    expect(tr.routeById(r.id)!.status).toBe('noDepot');
+  });
+
+  it('на остановках копятся пассажиры там, где есть жители и работа; автобус их перевозит', async () => {
     const g = await town();
     await run(g, 30);
-    expect(g.builder.placeStop(60, 100).ok).toBe(true);
-    expect(g.get('transit').buses).toHaveLength(0);
-    expect(g.builder.placeStop(170, 100).ok).toBe(true);
-    await run(g, 3);
+    placeSnapped(g, 'busdepot', 40, 130);
+    g.builder.placeStop(60, 100);
+    g.builder.placeStop(170, 100);
+    await settle(g);
     const tr = g.get('transit');
-    expect(tr.stops).toHaveLength(2);
-    expect(tr.buses.length).toBeGreaterThan(0);
-    expect(tr.upkeep()).toBe(2 * g.config.economy.stopUpkeep + tr.buses.length * g.config.economy.busUpkeep);
-    expect(tr.share(60, 100)).toBeGreaterThan(0);
-    expect(tr.share(60, 500)).toBe(0);
-    const before = g.get('economy').computeBudget().income.transit;
-    tr.rider(10);
-    expect(g.get('economy').computeBudget().income.transit).toBeCloseTo(before + 10 * g.config.economy.fare);
+    const r = tr.createRoute();
+    for (const s of g.world.stops) tr.addStop(r.id, s.id);
+    g.get('time').tod = 0.3;
+    await run(g, 120);
+    expect(tr.routeById(r.id)!.carried + tr.waitingTotal()).toBeGreaterThan(0);
   });
 
-  it('автобус ездит между остановками и не умирает на остановке', async () => {
-    const g = createGame();
-    road(g, 40, 100, 200, 100);
-    g.builder.placeStop(60, 100);
-    g.builder.placeStop(180, 100);
-    await settle(g);
-    await run(g, 60);
-    const tr = g.get('transit');
-    expect(tr.buses.length).toBeGreaterThan(0);
-    expect(tr.buses.every((b) => !b.dead)).toBe(true);
-  });
-
-  it('одна остановка — автобусов нет, удаление дороги убирает остановки', async () => {
-    const g = createGame();
-    road(g, 40, 100, 200, 100);
-    g.builder.placeStop(60, 100);
-    await settle(g);
-    await run(g, 2);
-    expect(g.get('transit').buses).toHaveLength(0);
+  it('удаление дороги убирает остановки и выкидывает их из маршрутов', async () => {
+    const { g, routeId } = await line();
     g.builder.bulldozeRect(0, 0, 400, 400);
     await settle(g);
     expect(g.world.stops).toHaveLength(0);
+    expect(g.get('transit').routeById(routeId)!.stops).toHaveLength(0);
   });
 });
 

@@ -35,6 +35,12 @@ export class Toolbar {
   }
 
   private _toggle(id: string): void {
+    if (this._open === id) {
+      // закрытие раздела отменяет инструмент из него: кисть/подсветка не остаются висеть
+      const cur = this._getTool()?.id;
+      const item = cur ? this._game.toolbar.get(cur) : undefined;
+      if (item && item.category === id) this._game.bus.emit('tool:request', 'select');
+    }
     this._open = this._open === id ? '' : id;
     this._items.replaceChildren();
     this._itemBtns.clear();

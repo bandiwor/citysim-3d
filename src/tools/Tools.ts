@@ -12,7 +12,27 @@ export class SelectTool implements Tool {
   readonly panOnDrag = true;
   constructor(private _game: Game) {}
   up(p: Pointer): void {
-    this._game.bus.emit('select', this._game.world.buildingAt(p.x, p.z) ?? null);
+    const g = this._game;
+    const stop = g.get('transit').nearestStop(p.x, p.z, 4);
+    const b = g.world.buildingAt(p.x, p.z);
+    if (stop && !b) {
+      g.bus.emit('select', null);
+      g.bus.emit('select:stop', stop.id);
+      return;
+    }
+    g.bus.emit('select:stop', null);
+    g.bus.emit('select', b ?? null);
+  }
+
+  hover(p: Pointer | null, ctx: ToolContext): void {
+    if (!p) return ctx.clearPreview();
+    const b = this._game.world.buildingAt(p.x, p.z);
+    if (!b) return ctx.clearPreview();
+    const g = this._game;
+    const name = b.kind === 'zone' ? t(`zone.${b.zone}.name`) : t(`service.${b.defId}.name`);
+    const z = b.kind === 'zone' ? g.zoneTypes.require(b.zone) : null;
+    const detail = z ? (z.housing ? `👥 ${b.pop}/${b.cap}` : `💼 ${b.workers}/${b.jobs}`) : b.jobs ? `💼 ${b.workers}/${b.jobs}` : '';
+    ctx.setPreview({ hint: `${name}${detail ? ` · ${detail}` : ''}` });
   }
 }
 
@@ -122,25 +142,37 @@ export class RoadTool implements Tool {
     const b = this._game.builder;
     const snap = b.snap(p.x, p.z, { from: this._start ?? undefined, shift: p.shift });
     const marker = { x: snap.x, z: snap.z, ok: true };
-    if (!this._start) return ctx.setPreview({ marker, ribbon: null, hint: t('hint.roadStart') });
+    if (!this._start) return ctx.setPreview({ marker, ribbon: null, quads: [], marks: [], hint: t('hint.roadStart') });
     const ctrl = this._mode === 'curve' ? this._ctrl : null;
     if (this._mode === 'curve' && !this._ctrl) {
       const plan = b.planRoad(this._start, snap, null, this._typeId);
-      return ctx.setPreview({ marker, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, hint: t('hint.roadCtrl') });
+      return ctx.setPreview({ marker, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, quads: [], marks: [], hint: t('hint.roadCtrl') });
     }
     const plan = b.planRoad(this._start, snap, ctrl, this._typeId);
-    const hint = plan.ok ? `${fmtMoney(plan.cost)} · ${Math.round(plan.length)} ${t('unit.meters')}` : t(plan.reasonKey ?? 'err.road.short');
-    ctx.setPreview({ marker: { ...marker, ok: plan.ok }, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, hint });
+    let hint = plan.ok ? `${fmtMoney(plan.cost)} · ${Math.round(plan.length)} ${t('unit.meters')}` : t(plan.reasonKey ?? 'err.road.short');
+    if (plan.reasonKey === 'err.terrain') hint += ` · ${t('hint.useTerraform')}`;
+    if (plan.reasonKey === 'err.road.building') hint += ` · ${t('hint.bulldozeIt')}`;
+    // мешающие здания подсвечиваем красным, места с рельефом/дорогой — метками
+    const world = this._game.world;
+    const quads = plan.blockers
+      .filter((m) => m.buildingId)
+      .flatMap((m) => {
+        const bd = world.buildings.get(m.buildingId);
+        return bd ? [{ x: bd.x, z: bd.z, rot: bd.rot, w: bd.w + 0.6, d: bd.d + 0.6, ok: false }] : [];
+      });
+    const marks = plan.blockers.filter((m) => !m.buildingId).map((m) => ({ x: m.x, z: m.z }));
+    ctx.setPreview({ marker: { ...marker, ok: plan.ok }, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, quads, marks, hint });
   }
 }
 
-/** Зонирование кистью по клеткам вдоль дорог (zoneId = null — снять зону). [ и ] — размер кисти. */
+/** Зонирование кистью по клеткам вдоль дорог (zoneId = null — снять зону). [ и ] — размер кисти. Цвет кисти — цвет зоны. */
 export class ZoneTool implements Tool {
   readonly id: string;
   readonly showGrid = true;
   readonly options: ToolOption[];
   private _brush: number;
   private _painting = false;
+  private _last: Pointer | null = null;
 
   constructor(private _game: Game, private _zoneId: string | null) {
     this.id = `zone:${_zoneId ?? 'none'}`;
@@ -160,15 +192,28 @@ export class ZoneTool implements Tool {
     return this._game.config.zoning.brushSizes[this._brush];
   }
 
+  /** Цвет кисти: зона — её цвет, удаление — красный. */
+  private get _color(): number {
+    return this._zoneId ? this._game.zoneTypes.require(this._zoneId).color : 0xff4d4d;
+  }
+
   hover(p: Pointer | null, ctx: ToolContext): void {
-    if (!p) return ctx.clearPreview();
+    if (!p) {
+      this._painting = false;
+      return ctx.clearPreview();
+    }
+    this._last = p;
     const r = this._radius;
     const target = this._zoneId ? this._game.zoneTypes.require(this._zoneId).index + 1 : 0;
     const cells = this._game.builder.cellsInBrush(p.x, p.z, r);
-    const quads = cells.map((c) => ({ x: c.x, z: c.z, rot: c.rot, w: CELL - 0.4, d: CELL - 0.4, ok: c.zone !== target && (target === 0 || !c.building) }));
+    const color = this._color;
+    const quads = cells.map((c) => {
+      const ok = c.zone !== target && (target === 0 || !c.building);
+      return { x: c.x, z: c.z, rot: c.rot, w: CELL - 0.4, d: CELL - 0.4, ok, color: ok ? color : 0x888888 };
+    });
     const n = quads.filter((q) => q.ok).length;
     const cost = this._zoneId ? n * this._game.zoneTypes.require(this._zoneId).cost : 0;
-    ctx.setPreview({ quads, ring: { x: p.x, z: p.z, r, ok: true }, hint: cells.length ? (cost ? `${fmtMoney(cost)} · ${n}` : String(n)) : t('hint.noCells') });
+    ctx.setPreview({ quads, marks: [], ring: { x: p.x, z: p.z, r, ok: true, color }, hint: cells.length ? (cost ? `${fmtMoney(cost)} · ${n}` : String(n)) : t('hint.noCells') });
   }
 
   down(p: Pointer, ctx: ToolContext): void {
@@ -185,12 +230,16 @@ export class ZoneTool implements Tool {
     this._painting = false;
   }
 
+  deactivate(): void {
+    this._painting = false;
+  }
+
   key(code: string, ctx: ToolContext): boolean {
     const n = this._game.config.zoning.brushSizes.length;
     if (code === 'BracketLeft') this._brush = Math.max(0, this._brush - 1);
     else if (code === 'BracketRight') this._brush = Math.min(n - 1, this._brush + 1);
     else return false;
-    void ctx;
+    if (this._last) this.hover(this._last, ctx);
     return true;
   }
 
@@ -287,31 +336,5 @@ export class BulldozeTool implements Tool {
     this._start = null;
     ctx.clearPreview();
     return true;
-  }
-}
-
-/** Автобусная остановка на дороге. */
-export class StopTool implements Tool {
-  readonly id = 'stop';
-  readonly showGrid = true;
-  constructor(private _game: Game) {}
-
-  hover(p: Pointer | null, ctx: ToolContext): void {
-    if (!p) return ctx.clearPreview();
-    const g = this._game;
-    const hit = g.world.graph.nearest(p.x, p.z, g.config.roads.snapRadius + 6, (e) => e.access);
-    ctx.setPreview({
-      marker: hit ? { x: hit.x, z: hit.z, ok: true } : null,
-      hint: hit ? fmtMoney(g.config.economy.stopCost) : t('err.stop.road'),
-    });
-  }
-
-  down(p: Pointer, ctx: ToolContext): void {
-    const r = this._game.builder.placeStop(p.x, p.z);
-    if (r.reasonKey) {
-      this._game.message(r.reasonKey, undefined, 'bad');
-      this._game.sfx('error');
-    }
-    this.hover(p, ctx);
   }
 }

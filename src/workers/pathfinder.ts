@@ -29,15 +29,15 @@ export class PathFinder {
     const counts = new Int32Array(n + 1);
     for (let e = 0; e < g.edgeCount; e++) {
       counts[g.edgeA[e] + 1]++;
-      counts[g.edgeB[e] + 1]++;
+      if (!g.edgeOneway[e]) counts[g.edgeB[e] + 1]++;
     }
     for (let i = 0; i < n; i++) counts[i + 1] += counts[i];
     this._adjStart = counts;
-    this._adj = new Int32Array(g.edgeCount * 2);
+    this._adj = new Int32Array(counts[n]);
     const fill = counts.slice(0, n);
     for (let e = 0; e < g.edgeCount; e++) {
       this._adj[fill[g.edgeA[e]]++] = e;
-      this._adj[fill[g.edgeB[e]]++] = e;
+      if (!g.edgeOneway[e]) this._adj[fill[g.edgeB[e]]++] = e;
     }
     this._dist = new Float64Array(n);
     this._prevEdge = new Int32Array(n);
@@ -66,7 +66,9 @@ export class PathFinder {
     if (!g || g.version !== req.version) return fail;
     const { fromEdge, toEdge } = req;
     if (fromEdge < 0 || toEdge < 0 || fromEdge >= g.edgeCount || toEdge >= g.edgeCount) return fail;
-    if (fromEdge === toEdge) {
+    const oneFrom = g.edgeOneway[fromEdge] === 1;
+    const oneTo = g.edgeOneway[toEdge] === 1;
+    if (fromEdge === toEdge && (!oneFrom || req.toS >= req.fromS)) {
       const dir = req.toS >= req.fromS ? 1 : -1;
       return { id: req.id, version: req.version, ok: true, steps: [(fromEdge + 1) * dir] };
     }
@@ -94,7 +96,7 @@ export class PathFinder {
       this._prevNode[node] = -1;
       this._push(node, cost + h(node));
     };
-    seed(g.edgeA[fromEdge], this._time(fromEdge, req.fromS), -1);
+    if (!oneFrom) seed(g.edgeA[fromEdge], this._time(fromEdge, req.fromS), -1);
     seed(g.edgeB[fromEdge], this._time(fromEdge, g.edgeLen[fromEdge] - req.fromS), 1);
 
     let best = Infinity;
@@ -103,7 +105,7 @@ export class PathFinder {
       const f = this._heapF[0];
       const n = this._pop();
       if (f >= best) break;
-      if (n === tA || n === tB) {
+      if (n === tA || (n === tB && !oneTo)) {
         const total = dist[n] + (n === tA ? costToA : costToB);
         if (total < best) {
           best = total;
@@ -114,6 +116,7 @@ export class PathFinder {
       for (let k = this._adjStart[n]; k < this._adjStart[n + 1]; k++) {
         const e = this._adj[k];
         const forward = g.edgeA[e] === n;
+        if (!forward && g.edgeOneway[e]) continue;
         const m = forward ? g.edgeB[e] : g.edgeA[e];
         const ng = gn + this._time(e);
         if (stamp[m] !== run || ng < dist[m]) {

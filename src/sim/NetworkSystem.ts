@@ -87,6 +87,7 @@ export class NetworkSystem implements System {
     const edgeLen = new Float32Array(edgeCount);
     const edgeSpeed = new Float32Array(edgeCount);
     const edgeCap = new Float32Array(edgeCount);
+    const edgeOneway = new Uint8Array(edgeCount);
     const edgeIds = new Int32Array(edgeCount);
     this._edgeIndex.clear();
     let k = 0;
@@ -98,9 +99,10 @@ export class NetworkSystem implements System {
       edgeLen[k] = e.len;
       edgeSpeed[k] = game.roadTypes.at(e.type).speed;
       edgeCap[k] = this.capacityOf(e);
+      edgeOneway[k] = e.oneway ? 1 : 0;
       k++;
     }
-    return { version: this.version + 1, nodeCount, edgeCount, nodeX, nodeZ, edgeA, edgeB, edgeLen, edgeSpeed, edgeCap, edgeIds, congestionPower: game.config.traffic.congestionPower, minFlow: game.config.traffic.minFlow };
+    return { version: this.version + 1, nodeCount, edgeCount, nodeX, nodeZ, edgeA, edgeB, edgeLen, edgeSpeed, edgeCap, edgeOneway, edgeIds, congestionPower: game.config.traffic.congestionPower, minFlow: game.config.traffic.minFlow };
   }
 
   /** Передаёт воркеру загруженность рёбер (id ребра → число машин). */
