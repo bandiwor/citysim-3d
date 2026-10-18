@@ -497,6 +497,8 @@ export const en = {
   'settings.grass.2': 'Lush',
   'settings.trees': 'Trees and rocks',
   'settings.trees.hint': 'Hide them to gain performance.',
+  'settings.autoRes': 'Dynamic resolution',
+  'settings.autoRes.hint': 'Temporarily lowers the render resolution when FPS drops, then restores it. Barely visible, keeps the game smooth.',
   'settings.fog': 'Distance haze',
   'settings.fog.hint': 'Fades the far horizon.',
   'settings.panSpeed': 'Camera pan speed',

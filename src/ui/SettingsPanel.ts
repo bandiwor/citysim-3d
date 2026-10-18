@@ -112,6 +112,7 @@ export function settingsBody(d: SettingsDeps): HTMLElement {
       toggle(t('settings.shadows'), t('settings.shadows.hint'), () => g().shadows, (v) => { graphics.set({ shadows: v }); upd(); }),
       choice(t('settings.shadowQuality'), '', [0, 1, 2].map((n) => ({ id: lvl(n), label: t(`settings.q.${n}`) })), () => lvl(g().shadowQuality), (v) => { graphics.set({ shadowQuality: +v }); upd(); }),
       slider(t('settings.renderScale'), 50, 100, Math.round(g().renderScale * 100), '%', (v) => { graphics.set({ renderScale: v / 100 }); upd(); }),
+      toggle(t('settings.autoRes'), t('settings.autoRes.hint'), () => g().autoRes, (v) => { graphics.set({ autoRes: v }); upd(); }),
       choice(t('settings.grass'), t('settings.grass.hint'), [0, 1, 2].map((n) => ({ id: lvl(n), label: t(`settings.grass.${n}`) })), () => lvl(g().grass), (v) => { graphics.set({ grass: +v }); upd(); }),
       toggle(t('settings.trees'), t('settings.trees.hint'), () => g().trees, (v) => { graphics.set({ trees: v }); upd(); }),
       toggle(t('settings.fog'), t('settings.fog.hint'), () => g().fog, (v) => { graphics.set({ fog: v }); upd(); }),

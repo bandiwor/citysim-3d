@@ -51,8 +51,8 @@ export class GeomBuilder {
     return this._add(new ConeGeometry(r, h, seg), x, y + h / 2, z, color, o);
   }
 
-  sphere(r: number, x: number, y: number, z: number, color: number, o: PartOptions = {}): this {
-    return this._add(new SphereGeometry(r, 10, 8), x, y + r, z, color, o);
+  sphere(r: number, x: number, y: number, z: number, color: number, o: PartOptions = {}, ws = 10, hs = 8): this {
+    return this._add(new SphereGeometry(r, ws, hs), x, y + r, z, color, o);
   }
 
   /** Двускатная крыша: основание w×d, высота h, конёк вдоль оси X (alongX) либо Z. */

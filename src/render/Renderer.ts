@@ -61,6 +61,17 @@ export class Renderer {
   private _amb = new AmbientLight(0x5a6ca0, 0.2);
   private _sky = new Color();
   private _fixed = 0.45;
+  /** тени перерисовываются не каждый кадр: при движении камеры — сразу, иначе раз в несколько кадров */
+  private _shadowKey = '';
+  private _shadowSkip = 0;
+  /** динамическое разрешение */
+  private _dyn = 1;
+  private _ema = 1 / 60;
+  private _dynTimer = 0;
+  private _good = 0;
+  private _basePR = 1;
+  /** телефон/планшет: сенсорный экран без мыши */
+  private readonly _mobile = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
   constructor(canvas: HTMLCanvasElement, private _game: Game) {
     this.three = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -70,6 +81,7 @@ export class Renderer {
     this.three.toneMappingExposure = _game.config.render.exposure;
     this.three.shadowMap.enabled = true;
     this.three.shadowMap.type = PCFShadowMap;
+    this.three.shadowMap.autoUpdate = false;
 
     this.camera = new CameraController(canvas, _game.world.size, _game.config.camera);
     this.scene.fog = new Fog(DAY_SKY.getHex(), 300, 1500);
@@ -95,7 +107,7 @@ export class Renderer {
       this.buildings,
       new AnimatedBuildingsView(this.scene, _game),
       new ConstructionView(this.scene, _game),
-      new TreeView(this.scene, _game),
+      new TreeView(this.scene, _game, () => this.camera.camera.position),
       new PropView(this.scene, _game),
       new GrassView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance })),
       new TrafficLightView(this.scene, _game),
@@ -113,13 +125,16 @@ export class Renderer {
   /** Применяет настройки графики: тени, разрешение, туман, деревья, день/ночь. */
   private _applyGraphics(g: GraphicsSettings): void {
     this.setShadows(g.shadows);
-    const size = [1024, 2048, 4096][g.shadowQuality] ?? 2048;
+    // на телефоне карта теней не больше 2048: на маленьком экране 4096 неотличима, а стоит вчетверо больше
+    const size = Math.min([1024, 2048, 4096][g.shadowQuality] ?? 2048, this._mobile ? 2048 : 4096);
     if (this._sun.shadow.mapSize.x !== size) {
       this._sun.shadow.map?.dispose();
       this._sun.shadow.map = null;
       this._sun.shadow.mapSize.set(size, size);
     }
-    this.three.setPixelRatio(Math.min(window.devicePixelRatio, 2) * g.renderScale);
+    this._basePR = Math.min(window.devicePixelRatio, 2) * g.renderScale;
+    if (!g.autoRes) this._dyn = 1;
+    this.three.setPixelRatio(this._basePR * this._dyn);
     const fog = this.scene.fog as Fog;
     fog.near = g.fog ? 300 : 20000;
     fog.far = g.fog ? 1500 : 40000;
@@ -135,6 +150,7 @@ export class Renderer {
   setShadows(on: boolean): void {
     this.shadows = on;
     this._sun.castShadow = on;
+    this._shadowKey = '';
     this.three.shadowMap.needsUpdate = true;
   }
 
@@ -150,7 +166,53 @@ export class Renderer {
     this.camera.update(realDt);
     for (const v of this._views) v.update?.(realDt, simDt);
     this._light();
+    this._shadowSchedule();
     this.three.render(this.scene, this.camera.camera);
+    this._adaptResolution(realDt);
+  }
+
+  /** Перерисовка карты теней: сразу при движении камеры/солнца, иначе через кадр (на паузе — реже). */
+  private _shadowSchedule(): void {
+    if (!this.shadows) return;
+    const t = this.camera.target;
+    const p = this._sun.position;
+    const key = `${t.x.toFixed(2)}|${t.z.toFixed(2)}|${this.camera.distance.toFixed(1)}|${p.x.toFixed(1)}|${p.y.toFixed(1)}`;
+    const every = this._game.speed > 0 ? 2 : 8;
+    if (key !== this._shadowKey || ++this._shadowSkip >= every) {
+      this._shadowKey = key;
+      this._shadowSkip = 0;
+      this.three.shadowMap.needsUpdate = true;
+    }
+  }
+
+  /** Динамическое разрешение: при FPS ниже ~48 масштаб снижается шагами до 0.6, при стабильных ~57+ — возвращается. */
+  private _adaptResolution(dt: number): void {
+    if (!graphics.get().autoRes || dt <= 0) return;
+    this._ema += (dt - this._ema) * 0.1;
+    this._dynTimer += dt;
+    if (this._dynTimer < 0.75) return;
+    this._dynTimer = 0;
+    const fps = 1 / this._ema;
+    let next = this._dyn;
+    if (fps < 48 && this._dyn > 0.6) {
+      next = Math.max(0.6, this._dyn - 0.1);
+      this._good = 0;
+    } else if (fps > 56) {
+      if (++this._good >= 4 && this._dyn < 1) {
+        next = Math.min(1, this._dyn + 0.05);
+        this._good = 0;
+      }
+    } else this._good = 0;
+    if (next !== this._dyn) {
+      this._dyn = next;
+      this.three.setPixelRatio(this._basePR * this._dyn);
+      this.resize();
+    }
+  }
+
+  /** текущий множитель динамического разрешения (для индикатора FPS) */
+  get dynamicScale(): number {
+    return this._dyn;
   }
 
   private _light(): void {

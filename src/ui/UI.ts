@@ -116,7 +116,8 @@ export class UI {
       frames++;
       const now = performance.now();
       if (now - last >= 500) {
-        this._fps.textContent = `${Math.round((frames * 1000) / (now - last))} FPS`;
+        const dyn = this._renderer.dynamicScale;
+        this._fps.textContent = `${Math.round((frames * 1000) / (now - last))} FPS${dyn < 1 ? ` · ${Math.round(dyn * 100)}%` : ''}`;
         frames = 0;
         last = now;
       }

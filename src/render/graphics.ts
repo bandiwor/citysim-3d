@@ -5,6 +5,8 @@ export interface GraphicsSettings {
   shadowQuality: number;
   /** масштаб отрисовки, 0.5..1 (1 = родное разрешение) */
   renderScale: number;
+  /** динамическое разрешение: при просадке FPS масштаб отрисовки временно снижается, затем возвращается */
+  autoRes: boolean;
   /** 0 — нет, 1 — немного, 2 — много */
   grass: number;
   trees: boolean;
@@ -23,6 +25,7 @@ export const GRAPHICS_DEFAULTS: GraphicsSettings = {
   shadows: true,
   shadowQuality: 1,
   renderScale: 1,
+  autoRes: true,
   grass: 1,
   trees: true,
   fog: true,

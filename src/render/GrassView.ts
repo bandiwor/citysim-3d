@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3, type Scene } from 'three';
+import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3, type Scene } from 'three';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
 import { obbDist } from '../world/geometry';
@@ -25,9 +25,9 @@ function tuftGeometry(): BufferGeometry {
       const a = [px - cx * w, 0, pz - cz * w];
       const b = [px + cx * w, 0, pz + cz * w];
       const c = [px + cx * 0.1, h, pz + cz * 0.1];
-      // лезвие с обеих сторон отдельными треугольниками (у двусторонней стороны нормаль переворачивается и трава чернеет)
-      pos.push(...a, ...b, ...c, ...b, ...a, ...c);
-      col.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b, base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b);
+      // одно лезвие на обе стороны (DoubleSide; переворот нормали у обратной стороны отключён в шейдере)
+      pos.push(...a, ...b, ...c);
+      col.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b);
     }
   }
   const g = new BufferGeometry();
@@ -66,8 +66,10 @@ export class GrassView implements View {
   private _c = new Color();
 
   constructor(scene: Scene, private _game: Game, private _focus: () => { x: number; z: number; distance: number }) {
-    const mat = new MeshLambertMaterial({ vertexColors: true });
+    const mat = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide });
     mat.onBeforeCompile = (sh) => {
+      // нормаль «вверх» одинакова для обеих сторон лезвия: не переворачиваем её у обратной стороны, иначе трава чернеет
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  normal = normalize( vNormal );');
       sh.uniforms.uTime = this._uniform;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;').replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n  float sw = sin(uTime * 1.7 + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23);\n  transformed.x += sw * 0.16 * position.y * position.y;\n  transformed.z += cos(uTime * 1.3 + instanceMatrix[3].z * 0.31) * 0.1 * position.y * position.y;\n#endif');
     };

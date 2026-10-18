@@ -1,30 +1,49 @@
 import type { BufferGeometry } from 'three';
 import { GeomBuilder } from './GeomBuilder';
 
-/** Модели деревьев, кустов, цветов и камней (по id из data/props.ts). */
-export function propModel(kind: string): BufferGeometry {
+/**
+ * Модели деревьев, кустов, цветов и камней (по id из data/props.ts).
+ * lod 0 — вблизи (кроны 8×6 сегментов: на размере дерева неотличимо от 10×8, а треугольников почти вдвое меньше),
+ * lod 1 — издалека (грубые кроны и стволы, ~в 4 раза меньше треугольников).
+ */
+export function propModel(kind: string, lod = 0): BufferGeometry {
   const b = new GeomBuilder();
+  const far = lod > 0;
+  const [ws, hs] = far ? [5, 4] : [8, 6];
+  const trunk = far ? 4 : 6;
+  const coneSeg = far ? 5 : 7;
+  // сфера кроны с нужной детализацией
+  const sp = (r: number, x: number, y: number, z: number, c: number): void => void b.sphere(r, x, y, z, c, {}, ws, hs);
   switch (kind) {
     case 'oak':
-      b.cylinder(0.3, 0.42, 2.2, 0, 0, 0, 0x6e4a2c, 6).sphere(1.9, 0, 1.6, 0, 0x3f8f45).sphere(1.35, 1.0, 2.5, 0.4, 0x4aa04f).sphere(1.2, -0.9, 2.2, -0.5, 0x37803d);
+      b.cylinder(0.3, 0.42, 2.2, 0, 0, 0, 0x6e4a2c, trunk);
+      sp(1.9, 0, 1.6, 0, 0x3f8f45);
+      sp(1.35, 1.0, 2.5, 0.4, 0x4aa04f);
+      sp(1.2, -0.9, 2.2, -0.5, 0x37803d);
       break;
     case 'pine':
-      b.cylinder(0.18, 0.28, 1.6, 0, 0, 0, 0x5a3d25, 5).cone(1.5, 2.6, 0, 1.0, 0, 0x2a6e3a, 7).cone(1.15, 2.2, 0, 2.5, 0, 0x2f7d3b, 7).cone(0.8, 1.8, 0, 3.8, 0, 0x378a45, 7);
+      b.cylinder(0.18, 0.28, 1.6, 0, 0, 0, 0x5a3d25, far ? 4 : 5).cone(1.5, 2.6, 0, 1.0, 0, 0x2a6e3a, coneSeg).cone(1.15, 2.2, 0, 2.5, 0, 0x2f7d3b, coneSeg).cone(0.8, 1.8, 0, 3.8, 0, 0x378a45, coneSeg);
       break;
     case 'birch':
-      b.cylinder(0.16, 0.22, 3.2, 0, 0, 0, 0xe8e6de, 6).sphere(1.25, 0, 3.0, 0, 0x8fc85a).sphere(0.9, 0.7, 4.0, 0.3, 0x9fd468).sphere(0.8, -0.7, 2.4, -0.4, 0x7fb84c);
+      b.cylinder(0.16, 0.22, 3.2, 0, 0, 0, 0xe8e6de, trunk);
+      sp(1.25, 0, 3.0, 0, 0x8fc85a);
+      sp(0.9, 0.7, 4.0, 0.3, 0x9fd468);
+      sp(0.8, -0.7, 2.4, -0.4, 0x7fb84c);
       break;
     case 'palm':
-      b.cylinder(0.16, 0.26, 2.4, 0, 0, 0, 0x9a7650, 6).cylinder(0.14, 0.18, 2.2, 0.35, 2.3, 0, 0x9a7650, 6, { rz: -0.15 });
+      b.cylinder(0.16, 0.26, 2.4, 0, 0, 0, 0x9a7650, trunk).cylinder(0.14, 0.18, 2.2, 0.35, 2.3, 0, 0x9a7650, trunk, { rz: -0.15 });
       for (let i = 0; i < 6; i++) b.box(2.4, 0.12, 0.5, 0.7 + Math.cos((i / 6) * Math.PI * 2) * 1.1, 4.4, Math.sin((i / 6) * Math.PI * 2) * 1.1, 0x3fa04a, { ry: -(i / 6) * Math.PI * 2, rz: -0.35 });
-      b.sphere(0.25, 0.7, 4.3, 0.2, 0x7a5a2a);
+      if (!far) b.sphere(0.25, 0.7, 4.3, 0.2, 0x7a5a2a, {}, 6, 4);
       break;
     case 'bush':
-      b.sphere(0.9, 0, 0, 0, 0x4a9a4e).sphere(0.7, 0.8, 0, 0.3, 0x3f8b45).sphere(0.6, -0.7, 0, -0.3, 0x55a85a);
+      sp(0.9, 0, 0, 0, 0x4a9a4e);
+      sp(0.7, 0.8, 0, 0.3, 0x3f8b45);
+      sp(0.6, -0.7, 0, -0.3, 0x55a85a);
       break;
     case 'flowers':
-      b.sphere(0.5, 0, 0, 0, 0x4e9a4e);
-      for (const [x, z, c] of [[0.2, 0.1, 0xe8465a], [-0.3, 0.2, 0xf2c230], [0.1, -0.35, 0xb056d8], [-0.2, -0.2, 0xffffff], [0.4, -0.2, 0xff8fb0]] as [number, number, number][]) b.sphere(0.2, x, 0.5, z, c);
+      sp(0.5, 0, 0, 0, 0x4e9a4e);
+      // цветки крошечные: им хватает грубой сферы, издалека остаются три
+      for (const [x, z, c] of ([[0.2, 0.1, 0xe8465a], [-0.3, 0.2, 0xf2c230], [0.1, -0.35, 0xb056d8], [-0.2, -0.2, 0xffffff], [0.4, -0.2, 0xff8fb0]] as [number, number, number][]).slice(0, far ? 3 : 5)) b.sphere(0.2, x, 0.5, z, c, {}, far ? 4 : 5, far ? 3 : 4);
       break;
     case 'rock':
       b.box(1.2, 0.8, 1.0, 0, 0, 0, 0x8d9096, { ry: 0.5, rz: 0.15 }).box(0.8, 0.6, 0.7, 0.6, 0, 0.4, 0x9a9da3, { ry: 1.2, rx: 0.2 });

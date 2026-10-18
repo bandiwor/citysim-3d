@@ -499,6 +499,8 @@ export const ru: Record<keyof typeof en, string> = {
   'settings.grass.2': 'Густая',
   'settings.trees': 'Деревья и камни',
   'settings.trees.hint': 'Отключите для повышения производительности.',
+  'settings.autoRes': 'Динамическое разрешение',
+  'settings.autoRes.hint': 'При просадке FPS временно снижает разрешение отрисовки, затем возвращает. Почти незаметно, но держит плавность.',
   'settings.fog': 'Дымка вдали',
   'settings.fog.hint': 'Размывает далёкий горизонт.',
   'settings.panSpeed': 'Скорость перемещения камеры',
