@@ -1,20 +1,3 @@
-import { onLocaleChange, t } from './i18n';
-import { h } from './ui/dom';
-
-/** Пока телефон держат вертикально — поверх игры заглушка «поверните устройство» (показ — через CSS по ориентации). */
-export function installOrientationGuard(): void {
-  const title = h('div', { class: 'rot-title' });
-  const text = h('div', { class: 'rot-text' });
-  const el = h('div', { class: 'rotate-guard' }, h('div', { class: 'rot-icon', text: '📱' }), title, text);
-  const fill = (): void => {
-    title.textContent = t('rotate.title');
-    text.textContent = t('rotate.text');
-  };
-  fill();
-  onLocaleChange(fill);
-  document.body.append(el);
-}
-
 /** Запрет масштабирования страницы жестами (двойной тап, щипок, iOS gesture*), чтобы игра не «уезжала» из-за случайного зума. */
 export function lockPageZoom(): void {
   const stop = (e: Event): void => e.preventDefault();

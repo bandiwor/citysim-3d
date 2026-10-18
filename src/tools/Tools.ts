@@ -159,6 +159,11 @@ export class RoadTool implements Tool {
     this._downAt = null;
   }
 
+  /** на телефоне первая точка дороги ставится сразу, остальные — с подтверждением */
+  touchInstant(): boolean {
+    return !this._start;
+  }
+
   escape(ctx: ToolContext): boolean {
     if (!this._start) return false;
     this._reset();

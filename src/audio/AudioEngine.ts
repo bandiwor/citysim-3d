@@ -2,6 +2,31 @@ import type { GameConfig } from '../config/gameConfig';
 import type { Game } from '../core/Game';
 import { AMBIENT_LAYERS, computeMix, type AmbientLayer, type AmbientState } from './mixer';
 
+/** Секунда тишины в WAV (blob-URL): нужна, чтобы iOS не глушил Web Audio переключателем «без звука». */
+let silentUrl = '';
+function silentWavUrl(): string {
+  if (silentUrl) return silentUrl;
+  const rate = 8000;
+  const n = rate;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const str = (o: number, x: string): void => [...x].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF');
+  v.setUint32(4, 36 + n * 2, true);
+  str(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  str(36, 'data');
+  v.setUint32(40, n * 2, true);
+  silentUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  return silentUrl;
+}
+
 export type AudioChannel = 'master' | 'ambient' | 'sfx' | 'music';
 
 const CHORDS = [
@@ -38,6 +63,38 @@ export class AudioEngine {
     } catch {
       /* хранилище недоступно */
     }
+    this._watchGestures();
+  }
+
+  /**
+   * Safari/iOS: звук разрешён только из «настоящего» жеста (touchend/click, но не pointerdown), контекст может уйти в suspended/interrupted
+   * (фоновая вкладка, звонок), а переключатель «без звука» глушит Web Audio. Поэтому на каждый жест проверяем контекст,
+   * запускаем беззвучный <audio> (переводит сессию в режим воспроизведения) и возобновляем при возвращении на вкладку.
+   */
+  private _watchGestures(): void {
+    if (typeof document === 'undefined') return;
+    let silent: HTMLAudioElement | null = null;
+    const startSilent = (): void => {
+      try {
+        (navigator as unknown as { audioSession?: { type: string } }).audioSession && ((navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback');
+        if (!silent) {
+          silent = new Audio(silentWavUrl());
+          silent.loop = true;
+          silent.setAttribute('playsinline', '');
+        }
+        if (silent.paused) void silent.play().catch(() => {});
+      } catch {
+        /* не критично */
+      }
+    };
+    const kick = (): void => {
+      startSilent();
+      if (!this._ctx) this.unlock();
+      else if (this._ctx.state !== 'running') void this._ctx.resume().catch(() => {});
+    };
+    for (const ev of ['touchend', 'click', 'keydown', 'pointerup']) document.addEventListener(ev, kick, { passive: true });
+    document.addEventListener('visibilitychange', () => !document.hidden && this._ctx && void this._ctx.resume().catch(() => {}));
+    window.addEventListener('pageshow', () => this._ctx && void this._ctx.resume().catch(() => {}));
   }
 
   get ready(): boolean {
@@ -89,7 +146,11 @@ export class AudioEngine {
     this._noise = { white: this._makeNoise('white'), pink: this._makeNoise('pink'), brown: this._makeNoise('brown') };
     this._buildLayers();
     this._applyVolumes();
-    void ctx.resume();
+    ctx.onstatechange = () => {
+      // Safari переводит контекст в interrupted/suspended — возвращаем в работу при первой возможности
+      if (ctx.state !== 'running' && !document.hidden) void ctx.resume().catch(() => {});
+    };
+    void ctx.resume().catch(() => {});
   }
 
   private _applyVolumes(): void {

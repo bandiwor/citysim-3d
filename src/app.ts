@@ -5,7 +5,7 @@ import { mergeConfig } from './config/gameConfig';
 import { Game } from './core/Game';
 import { coreFeature, disastersFeature, natureFeature, roadsFeature, servicesFeature, trafficFeature, zonesFeature } from './features';
 import { detectLocale, setLocale, t } from './i18n';
-import { installOrientationGuard, lockPageZoom } from './orientation';
+import { lockPageZoom } from './orientation';
 import { Renderer } from './render/Renderer';
 import { SaveSystem } from './sim/SaveSystem';
 import { h } from './ui/dom';
@@ -22,7 +22,6 @@ const root = document.getElementById('ui') as HTMLElement;
 export async function boot(): Promise<void> {
   setLocale(detectLocale());
   lockPageZoom();
-  installOrientationGuard();
   const config = mergeConfig();
   const audio = new AudioEngine(config.audio);
   const choice = await showStartScreen(root, config.save.key, audio);

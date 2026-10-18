@@ -95,6 +95,9 @@ export const en = {
   'hud.demand': 'Demand: residential / commercial / industrial',
   'hud.maps': 'Maps',
   'hud.mapsTitle': 'Heat maps',
+  'hud.more': 'More',
+  'hud.speedCycle': 'Game speed',
+  'touch.exit': 'Leave build mode',
   'hud.pause': 'Pause (Space)',
   'hud.speed': 'Speed ×{n}',
 

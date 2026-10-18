@@ -36,22 +36,61 @@ describe('сенсорное управление', () => {
     expect(game.world.graph.nodes.size).toBe(0);
   });
 
-  it('тап ставит отложенную точку, повторный тап рядом подтверждает', () => {
+  it('первая точка дороги ставится сразу чётким тапом, вторая ждёт подтверждения', () => {
     const { input, fire } = setup('road:street');
+    expect(input.tool!.touchInstant!()).toBe(true);
     fire('pointerdown', 1, 200, 200);
     fire('pointerup', 1, 200, 200);
-    expect(input.hasPending).toBe(true);
-    fire('pointerdown', 1, 205, 203);
-    fire('pointerup', 1, 205, 203);
     expect(input.hasPending).toBe(false);
+    expect(input.tool!.touchInstant!()).toBe(false);
+    fire('pointerdown', 1, 400, 200);
+    fire('pointerup', 1, 400, 200);
+    expect(input.hasPending).toBe(true);
+    fire('pointerdown', 1, 405, 203);
+    fire('pointerup', 1, 405, 203);
+    expect(input.hasPending).toBe(false);
+  });
+
+  it('долгое касание на месте не считается тапом', () => {
+    const { input, fire } = setup('road:street');
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValueOnce(0);
+    fire('pointerdown', 1, 200, 200);
+    now.mockReturnValue(900);
+    fire('pointerup', 1, 200, 200);
+    expect(input.tool!.touchInstant!()).toBe(true);
+    now.mockRestore();
+  });
+
+  it('кисть по умолчанию не рисует: палец двигает камеру, рисование включается кнопкой', () => {
+    const { input, cam, fire } = setup('terraform:raise');
+    const down = vi.fn();
+    input.tool!.down = down;
+    fire('pointerdown', 1, 200, 200);
+    fire('pointermove', 1, 260, 230);
+    fire('pointerup', 1, 260, 230);
+    expect(down).not.toHaveBeenCalled();
+    expect(cam.panPixels).toHaveBeenCalled();
+    fire('pointerdown', 1, 200, 200);
+    fire('pointerup', 1, 200, 200);
+    expect(down).not.toHaveBeenCalled();
+    input.touchDraw = true;
+    fire('pointerdown', 1, 200, 200);
+    expect(down).toHaveBeenCalledTimes(1);
+    fire('pointerup', 1, 200, 200);
   });
 
   it('✖ сначала снимает точку и оставляет инструмент', () => {
     const { input, fire } = setup('road:street');
     fire('pointerdown', 1, 200, 200);
     fire('pointerup', 1, 200, 200);
+    fire('pointerdown', 1, 400, 200);
+    fire('pointerup', 1, 400, 200);
+    expect(input.hasPending).toBe(true);
     input.cancel();
     expect(input.hasPending).toBe(false);
+    expect(input.toolId).toBe('road:street');
+    input.cancel(); // отмена начатой дороги
     expect(input.toolId).toBe('road:street');
     input.cancel();
     expect(input.toolId).toBe('select');

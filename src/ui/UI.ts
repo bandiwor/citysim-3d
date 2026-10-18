@@ -194,6 +194,10 @@ export class UI {
     this._tb = {};
     this._touchBar.replaceChildren(
       b('hide', '👁', 'touch.hideUi', () => this._setUiHidden(!document.body.classList.contains('ui-min'))),
+      b('exit', '⏏', 'touch.exit', () => {
+        this.input.cancel();
+        if (this.input.toolId !== 'select') this.input.setTool('select');
+      }),
       b('panel', '🧰', 'touch.panel', () => this._toolbar?.setCollapsed(!this._toolbar.collapsed)),
       b('mode', '✏️', 'touch.drawMode', () => {
         this.input.touchDraw = !this.input.touchDraw;
@@ -205,7 +209,7 @@ export class UI {
       b('snap', '🧲', 'touch.snap', () => this.input.press(keys.code('snap'))),
       b('brushS', '◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
       b('brushB', '◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
-      b('cancel', '✖', 'touch.cancel', () => this.input.cancel()),
+      b('cancel', '↩', 'touch.cancel', () => this.input.cancel()),
       b('ok', '✔', 'touch.confirm', () => this.input.confirm()),
     );
     this._updateTouchBar();
@@ -226,6 +230,8 @@ export class UI {
     const show = (k: string, on: boolean): void => {
       if (this._tb[k]) this._tb[k].style.display = on ? '' : 'none';
     };
+    show('hide', !active || document.body.classList.contains('ui-min'));
+    show('exit', active);
     show('panel', active && !!this._toolbar);
     show('mode', brush);
     show('rotL', place);
@@ -234,7 +240,7 @@ export class UI {
     show('snap', road);
     show('brushS', brush);
     show('brushB', brush);
-    show('cancel', active || this.input.hasPending);
+    show('cancel', active);
     show('ok', active && !brush);
     this._tb.ok?.classList.toggle('ready', this.input.hasPending);
     this._tb.mode?.classList.toggle('on', !this.input.touchDraw);

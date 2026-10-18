@@ -66,6 +66,8 @@ export interface Tool {
   down?(p: Pointer, ctx: ToolContext): void;
   move?(p: Pointer, ctx: ToolContext): void;
   up?(p: Pointer, ctx: ToolContext): void;
+  /** сенсорный ввод: нужно ли ставить точку сразу по тапу (иначе тап только показывает превью до подтверждения) */
+  touchInstant?(): boolean;
   /** ПКМ/Esc: вернуть true, если был активный процесс и он отменён (инструмент остаётся выбранным). */
   escape?(ctx: ToolContext): boolean;
   /** горячая клавиша внутри инструмента; true — обработана */

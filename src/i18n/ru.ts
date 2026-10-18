@@ -97,6 +97,9 @@ export const ru: Record<keyof typeof en, string> = {
   'hud.demand': 'Спрос: жилой / коммерческий / промышленный',
   'hud.maps': 'Карты',
   'hud.mapsTitle': 'Тепловые карты',
+  'hud.more': 'Ещё',
+  'hud.speedCycle': 'Скорость времени',
+  'touch.exit': 'Выйти из режима строительства',
   'hud.pause': 'Пауза (Пробел)',
   'hud.speed': 'Скорость ×{n}',
 

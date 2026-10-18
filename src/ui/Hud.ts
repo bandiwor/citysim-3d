@@ -20,6 +20,9 @@ export class Hud {
   private _lvFill = h('div', { class: 'lv-fill' });
   private _badge = h('span', { class: 'badge', style: 'display:none' });
   private _evBtn: HTMLElement;
+  private _evSide!: HTMLElement;
+  private _side!: HTMLElement;
+  private _speedOne!: HTMLElement;
   private _speedBtns: HTMLElement[] = [];
   private _timer = 0;
   private _off: () => void;
@@ -40,35 +43,56 @@ export class Hud {
     });
     this._evBtn = h('button', { class: 'btn icon pulse', text: '📨', title: t('hud.event'), style: 'display:none', onclick: actions.event });
     const advBtn = h('button', { class: 'btn icon relative', title: t('hud.advisor'), onclick: () => actions.advisor(advBtn) }, h('span', { text: '🔔' }), this._badge);
-    const mapsBtn = h('button', { class: 'btn', text: `🗺️ ${t('hud.maps')}`, title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) });
+    const mapsBtn = h('button', { class: 'btn maps-btn', title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) }, h('span', { text: '🗺️' }), h('span', { class: 'lbl', text: ` ${t('hud.maps')}` }));
+    // кнопки окон: ряд значков на ПК и тот же набор вертикальным списком в боковом меню на телефоне
+    const defs: { ic: string; label: string; title: string; fn: () => void }[] = [
+      { ic: '🎯', label: t('hud.goals'), title: `${t('hud.goals')} (J)`, fn: actions.goals },
+      { ic: '📜', label: t('hud.policies'), title: `${t('hud.policies')} (K)`, fn: actions.policies },
+      { ic: '💰', label: t('hud.budget'), title: `${t('hud.budget')} (B)`, fn: actions.budget },
+      { ic: '📊', label: t('hud.stats'), title: `${t('hud.stats')} (G)`, fn: actions.stats },
+      { ic: '🔍', label: t('hud.diagnostics'), title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, fn: actions.diagnostics },
+      { ic: '🎓', label: t('hud.education'), title: `${t('hud.education')} (E)`, fn: actions.education },
+      { ic: '🚌', label: t('hud.routes'), title: `${t('hud.routes')} (T)`, fn: actions.routes },
+      { ic: '🗑️', label: t('hud.city'), title: `${t('hud.city')} (H)`, fn: actions.city },
+      { ic: '🚶', label: t('hud.walk'), title: `${t('hud.walk')} (P)`, fn: actions.walk },
+      { ic: '💾', label: t('menu.save'), title: t('menu.save'), fn: actions.save },
+      { ic: '❓', label: t('menu.help'), title: t('menu.help'), fn: actions.help },
+    ];
+    const rowBtns = defs.map((d) => h('button', { class: 'btn icon', text: d.ic, title: d.title, onclick: d.fn }));
+    let moreBtn!: HTMLElement;
+    const side = h('div', { class: 'side-menu' });
+    this._side = side;
+    const closeSide = (): void => side.classList.remove('open');
+    const sideBtns = defs.map((d) => h('button', { class: 'btn side-item', onclick: () => { closeSide(); d.fn(); } }, h('span', { class: 'si-ic', text: d.ic }), h('span', { text: d.label })));
+    const evSide = h('button', { class: 'btn side-item pulse', style: 'display:none', onclick: () => { closeSide(); actions.event(); } }, h('span', { class: 'si-ic', text: '📨' }), h('span', { text: t('hud.event') }));
+    this._evSide = evSide;
+    const advSide = h('button', { class: 'btn side-item', onclick: () => { closeSide(); actions.advisor(moreBtn); } }, h('span', { class: 'si-ic', text: '🔔' }), h('span', { text: t('hud.advisor') }));
+    side.append(evSide, advSide, ...sideBtns);
+    moreBtn = h('button', { class: 'btn icon more-btn', text: '⋯', title: t('hud.more'), onclick: (e: Event) => { e.stopPropagation(); side.classList.toggle('open'); } });
+    // нажатие мимо бокового меню закрывает его
+    document.addEventListener('pointerdown', (e) => side.classList.contains('open') && !side.contains(e.target as Node) && e.target !== moreBtn && closeSide());
+    // одна кнопка времени на телефоне: ⏸ → ▶ → ⏩ → ⏭
+    const speedOne = h('button', { class: 'btn icon speed-one', title: t('hud.speedCycle'), onclick: () => {
+      const sp = _game.config.time.speeds;
+      _game.setSpeed(sp[(sp.indexOf(_game.speed) + 1) % sp.length]);
+    } });
+    this._speedOne = speedOne;
     this.el = h(
       'div',
       { class: 'hud' },
       h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', text: '☰', title: t('hud.menu'), onclick: actions.menu }), this._date),
-      h('div', { class: 'hud-group clickable', title: t('hud.budget'), onclick: actions.budget }, this._money, this._delta),
-      h('div', { class: 'hud-group clickable', title: t('hud.stats'), onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
-      h('div', { class: 'hud-group clickable', title: t('hud.goals'), onclick: actions.goals }, this._level, h('div', { class: 'lv-bar' }, this._lvFill)),
-      h('div', { class: 'hud-group', title: t('hud.utilities') }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
+      h('div', { class: 'hud-group clickable hud-money-g', title: t('hud.budget'), onclick: actions.budget }, this._money, this._delta),
+      h('div', { class: 'hud-group clickable hud-stats', title: t('hud.stats'), onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
+      h('div', { class: 'hud-group clickable hud-level', title: t('hud.goals'), onclick: actions.goals }, this._level, h('div', { class: 'lv-bar' }, this._lvFill)),
+      h('div', { class: 'hud-group hud-util', title: t('hud.utilities') }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
       bars,
       h('div', { class: 'hud-spacer' }),
+      speedOne,
       mapsBtn,
-      h('div', { class: 'hud-group buttons' },
-        this._evBtn,
-        advBtn,
-        h('button', { class: 'btn icon', text: '🎯', title: `${t('hud.goals')} (J)`, onclick: actions.goals }),
-        h('button', { class: 'btn icon', text: '📜', title: `${t('hud.policies')} (K)`, onclick: actions.policies }),
-        h('button', { class: 'btn icon', text: '💰', title: `${t('hud.budget')} (B)`, onclick: actions.budget }),
-        h('button', { class: 'btn icon', text: '📊', title: `${t('hud.stats')} (G)`, onclick: actions.stats }),
-        h('button', { class: 'btn icon', text: '🔍', title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, onclick: actions.diagnostics }),
-        h('button', { class: 'btn icon', text: '🎓', title: `${t('hud.education')} (E)`, onclick: actions.education }),
-        h('button', { class: 'btn icon', text: '🚌', title: `${t('hud.routes')} (T)`, onclick: actions.routes }),
-        h('button', { class: 'btn icon', text: '🗑️', title: `${t('hud.city')} (H)`, onclick: actions.city }),
-        h('button', { class: 'btn icon', text: '🚶', title: `${t('hud.walk')} (P)`, onclick: actions.walk }),
-        h('button', { class: 'btn icon', text: '💾', title: t('menu.save'), onclick: actions.save }),
-        h('button', { class: 'btn icon', text: '⚙️', title: t('menu.settings'), onclick: actions.settings }),
-        h('button', { class: 'btn icon', text: '❓', title: t('menu.help'), onclick: actions.help }),
-      ),
+      h('div', { class: 'hud-group buttons' }, this._evBtn, advBtn, ...rowBtns),
+      moreBtn,
       speeds,
+      side,
     );
     const off = _game.bus.on('speed:changed', () => this._refreshSpeed());
     this._off = off;
@@ -80,10 +104,13 @@ export class Hud {
   dispose(): void {
     clearInterval(this._timer);
     this._off();
+    this._side.remove();
   }
 
   private _refreshSpeed(): void {
-    this._game.config.time.speeds.forEach((v, i) => this._speedBtns[i].classList.toggle('active', v === this._game.speed));
+    const sp = this._game.config.time.speeds;
+    sp.forEach((v, i) => this._speedBtns[i].classList.toggle('active', v === this._game.speed));
+    this._speedOne.textContent = ['⏸', '▶', '⏩', '⏭'][sp.indexOf(this._game.speed)] ?? `×${this._game.speed}`;
   }
 
   refresh(): void {
@@ -99,6 +126,7 @@ export class Hud {
     this._badge.textContent = String(issues);
     this._badge.style.display = issues ? 'block' : 'none';
     this._evBtn.style.display = g.get('events').pending ? 'inline-block' : 'none';
+    this._evSide.style.display = g.get('events').pending ? 'flex' : 'none';
     this._money.textContent = fmtMoney(eco.money);
     this._money.classList.toggle('neg', eco.money < 0);
     const net = (eco.last ?? eco.computeBudget()).net;

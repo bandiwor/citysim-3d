@@ -24,9 +24,9 @@ export class Input implements ToolContext {
   /** жест двух пальцев: режим фиксируется по первому явному движению, чтобы щипок, поворот и наклон не мешали друг другу */
   private _gm: { mode: '' | 'tilt' | 'pinch'; zoom: number; rot: number; tilt: number; zoomOn: boolean; rotOn: boolean } = { mode: '', zoom: 0, rot: 0, tilt: 0, zoomOn: false, rotOn: false };
   /** один палец: пока не сдвинулся — это тап, после порога — сдвиг камеры */
-  private _tp: { id: number; sx: number; sy: number; lx: number; ly: number; moved: boolean } | null = null;
+  private _tp: { id: number; sx: number; sy: number; lx: number; ly: number; moved: boolean; t0: number } | null = null;
   /** касание: кисти рисуют пальцем (true) или палец двигает камеру (false) */
-  touchDraw = true;
+  touchDraw = false;
   /** после жеста игнорируем оставшийся палец до полного отпускания */
   private _gestureTail = false;
   /** касание: инструмент с подтверждением — первое нажатие показывает превью, второе рядом ставит */
@@ -88,6 +88,7 @@ export class Input implements ToolContext {
     this._toolId = id;
     this._renderer.zoneLayer.setGridVisible(!!tool.showGrid);
     this._pendingTap = null;
+    this.touchDraw = false;
     this.clearPreview();
     tool.activate?.(this);
     if (id !== 'select') this.game.bus.emit('select', null);
@@ -244,8 +245,8 @@ export class Input implements ToolContext {
   /** Короткое касание без сдвига. */
   private _tap(e: PointerEvent): void {
     const p = this._pointer(e);
-    if (!p || !this.tool) return;
-    if (!this._confirmTool) {
+    if (!p || !this.tool || this._brushTool) return;
+    if (!this._confirmTool || this.tool.touchInstant?.()) {
       this.tool.hover?.(p, this);
       this.tool.down?.(p, this);
       this.tool.up?.(p, this);
@@ -301,7 +302,7 @@ export class Input implements ToolContext {
     if (e.pointerType === 'touch' && !(this._brushTool && this.touchDraw)) {
       // палец двигает камеру; короткий тап — действие инструмента
       this._capture(e.pointerId);
-      this._tp = { id: e.pointerId, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
+      this._tp = { id: e.pointerId, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, t0: performance.now() };
       return;
     }
     this._capture(e.pointerId);
@@ -353,18 +354,25 @@ export class Input implements ToolContext {
       const tp = this._tp;
       if (tp && tp.id === e.pointerId) {
         this._tp = null;
-        if (!tp.moved && !this.locked) this._tap(e);
+        // «чёткое» нажатие: короткое и без сдвига (длинное касание на месте — не действие)
+        if (!tp.moved && !this.locked && performance.now() - tp.t0 < 450) this._tap(e);
         return;
       }
     }
     if (!this._down) return;
     this._down = false;
     const btn = this._btn;
+    const touchBrush = e.pointerType === 'touch' && this._brushTool;
     this._btn = -1;
     const p = this._pointer(e) ?? this._lastP;
     if (btn === 0 && this.tool && p) {
       if (!this.tool.panOnDrag || this._moved <= 4) this.tool.up?.(p, this);
     } else if (btn === 2 && this._moved < 5) this._escape();
+    // палец оторван — кисть на карте не остаётся (на ПК кольцо следует за курсором)
+    if (touchBrush) {
+      this.tool?.hover?.(null, this);
+      this.clearPreview();
+    }
   }
 
   /** ПКМ / Esc: отменить текущую операцию инструмента, иначе вернуться к «Выбору». */
