@@ -57,6 +57,9 @@ export class GrassView implements View {
   private _versions = '';
   private _timer = 0;
   private _occ = new Map<number, boolean>();
+  /** готовые пучки клетки (матрицы, цвета, порог появления по возрастанию): при сдвиге камеры только копируются */
+  private _cells = new Map<number, { mat: Float32Array; col: Float32Array; keys: Float32Array }>();
+  private _per = 0;
   private _dirty = true;
   private _t = 0;
   private _m = new Matrix4();
@@ -80,7 +83,10 @@ export class GrassView implements View {
     this._mesh.receiveShadow = false;
     this._mesh.castShadow = false;
     scene.add(this._mesh);
-    _game.bus.on('terrain:changed', () => (this._dirty = true));
+    _game.bus.on('terrain:changed', () => {
+      this._dirty = true;
+      this._cells.clear();
+    });
     graphics.onChange(() => (this._dirty = true));
   }
 
@@ -102,6 +108,33 @@ export class GrassView implements View {
     return false;
   }
 
+  /** Пучки одной клетки (пусто — трава здесь не растёт); считаются один раз и кэшируются. */
+  private _cell(idx: number, x: number, y: number, per: number): { mat: Float32Array; col: Float32Array; keys: Float32Array } {
+    const cached = this._cells.get(idx);
+    if (cached) return cached;
+    const w = this._game.world;
+    const cx = (x + 0.5) * CELL;
+    const cz = (y + 0.5) * CELL;
+    const empty = w.terrain[idx] === Terrain.Water || this._shore(x, y) || w.heightAt(cx, cz) > 16 || this._occupied(idx, cx, cz);
+    const order = empty ? [] : Array.from({ length: per }, (_, n) => n).sort((a, b) => hash(idx, a + 77) - hash(idx, b + 77));
+    const mat = new Float32Array(order.length * 16);
+    const col = new Float32Array(order.length * 3);
+    const keys = new Float32Array(order.length);
+    order.forEach((n, i) => {
+      const px = (x + hash(idx, n * 3 + 1)) * CELL;
+      const pz = (y + hash(idx, n * 3 + 2)) * CELL;
+      const s = 0.26 + hash(idx, n + 500) * 0.26;
+      this._m.compose(this._p.set(px, w.heightAt(px, pz) - 0.05, pz), this._q.setFromAxisAngle(UP, hash(idx, n + 900) * 6.28), this._s.set(s, s * (0.9 + hash(idx, n + 1300) * 0.6), s));
+      this._m.toArray(mat, i * 16);
+      const shade = 0.92 + hash(idx, n + 1700) * 0.18;
+      this._c.setRGB(shade, shade * (0.95 + hash(idx, n + 2100) * 0.15), shade * 0.9).toArray(col, i * 3);
+      keys[i] = hash(idx, n + 77);
+    });
+    const res = { mat, col, keys };
+    this._cells.set(idx, res);
+    return res;
+  }
+
   update(realDt: number): void {
     this._t += realDt;
     this._uniform.value = this._t;
@@ -121,7 +154,10 @@ export class GrassView implements View {
     if (!this._dirty && !moved && versions === this._versions && level === this._lastLevel) return;
     if (this._timer < 0.2) return;
     this._timer = 0;
-    if (versions !== this._versions) this._occ.clear();
+    if (versions !== this._versions) {
+      this._occ.clear();
+      this._cells.clear();
+    }
     this._versions = versions;
     this._lastX = f.x;
     this._lastZ = f.z;
@@ -130,8 +166,12 @@ export class GrassView implements View {
     this._dirty = false;
 
     const per = level === 2 ? 26 : 12;
+    if (per !== this._per || this._cells.size > 9000) this._cells.clear();
+    this._per = per;
     const ci = Math.floor(f.x / CELL);
     const cj = Math.floor(f.z / CELL);
+    const mats = this._mesh.instanceMatrix.array as Float32Array;
+    const cols = this._mesh.instanceColor!.array as Float32Array;
     let k = 0;
     for (let dj = -r; dj <= r && k < MAX; dj++) {
       for (let di = -r; di <= r && k < MAX; di++) {
@@ -139,25 +179,16 @@ export class GrassView implements View {
         const x = ci + di;
         const y = cj + dj;
         if (x < 0 || y < 0 || x >= w.size || y >= w.size) continue;
-        const idx = y * w.size + x;
-        if (w.terrain[idx] === Terrain.Water || this._shore(x, y)) continue;
-        const cx = (x + 0.5) * CELL;
-        const cz = (y + 0.5) * CELL;
-        if (w.heightAt(cx, cz) > 16) continue;
-        if (this._occupied(idx, cx, cz)) continue;
-        // к краю круга трава редеет
-        const edge = 1 - Math.hypot(di, dj) / r;
-        for (let n = 0; n < per && k < MAX; n++) {
-          if (hash(idx, n + 77) > Math.min(1, edge * 3)) continue;
-          const px = (x + hash(idx, n * 3 + 1)) * CELL;
-          const pz = (y + hash(idx, n * 3 + 2)) * CELL;
-          const s = 0.26 + hash(idx, n + 500) * 0.26;
-          this._m.compose(this._p.set(px, w.heightAt(px, pz) - 0.05, pz), this._q.setFromAxisAngle(UP, hash(idx, n + 900) * 6.28), this._s.set(s, s * (0.9 + hash(idx, n + 1300) * 0.6), s));
-          this._mesh.setMatrixAt(k, this._m);
-          const shade = 0.92 + hash(idx, n + 1700) * 0.18;
-          this._mesh.setColorAt(k, this._c.setRGB(shade, shade * (0.95 + hash(idx, n + 2100) * 0.15), shade * 0.9));
-          k++;
-        }
+        const cell = this._cell(y * w.size + x, x, y, per);
+        // к краю круга трава редеет: берём первые пучки с наименьшим порогом
+        const limit = Math.min(1, (1 - Math.hypot(di, dj) / r) * 3);
+        let n = 0;
+        while (n < cell.keys.length && cell.keys[n] <= limit) n++;
+        n = Math.min(n, MAX - k);
+        if (!n) continue;
+        mats.set(cell.mat.subarray(0, n * 16), k * 16);
+        cols.set(cell.col.subarray(0, n * 3), k * 3);
+        k += n;
       }
     }
     this._mesh.count = k;

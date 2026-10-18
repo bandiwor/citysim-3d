@@ -94,7 +94,7 @@ export class Renderer {
     this.scene.add(this._sun, this._sun.target, this._hemi, this._amb);
 
     const terrain = new TerrainView(this.scene, _game.world, _game);
-    this.buildings = new BuildingView(this.scene, _game);
+    this.buildings = new BuildingView(this.scene, _game, () => this.camera.camera.position);
     this.routes = new RouteView(this.scene, _game);
     this.pedestrians = new PedestrianView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance }));
     this.preview = new PreviewView(this.scene);
@@ -111,7 +111,7 @@ export class Renderer {
       new PropView(this.scene, _game),
       new GrassView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance })),
       new TrafficLightView(this.scene, _game),
-      new VehicleView(this.scene, _game),
+      new VehicleView(this.scene, _game, () => this.camera.camera.position),
       this.routes,
       this.pedestrians,
       new AlertView(this.scene, _game),

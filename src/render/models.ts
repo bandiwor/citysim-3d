@@ -1,7 +1,7 @@
 import { BufferGeometry } from 'three';
 import { Rng } from '../core/Rng';
 import { CELL } from '../world/World';
-import { GeomBuilder, mergeParts } from './GeomBuilder';
+import { currentLod, GeomBuilder, mergeParts } from './GeomBuilder';
 
 type ModelFactory = (rng: Rng) => BufferGeometry;
 
@@ -214,14 +214,43 @@ export function serviceModel(key: string, w: number, h: number, upgrades: string
       any = true;
     }
   }
+  // общие признаки «прокачанного» здания (только вблизи): флаг, клумбы, фонари, мощёная площадка у входа
+  if (currentLod() === 0) {
+    const n = upgrades.length;
+    const hw = (w * CELL) / 2 - 0.7;
+    const hd = (h * CELL) / 2 - 0.5;
+    extra.cylinder(0.06, 0.08, 5.2, -hw, 0, hd, 0xd9dde2, 6).box(1.3, 0.8, 0.05, -hw + 0.68, 4.2, hd, [0x2f7de1, 0x2e9e5b, 0xe1a52f, 0xd8433a][(n - 1) % 4]);
+    if (n >= 2) for (const x of [-hw + 1.6, hw - 1.2]) extra.box(1, 0.45, 0.6, x, 0, hd, 0x9a8c74).sphere(0.42, x - 0.18, 0.3, hd, 0x4a9a4e, {}, 7, 5).sphere(0.32, x + 0.22, 0.32, hd, 0xe8a0c0, {}, 6, 4);
+    if (n >= 3) {
+      extra.box(Math.min(5, hw), 0.08, 1.4, 0, 0, hd - 0.3, 0xc9c2b2);
+      for (const x of [-2.6, 2.6]) extra.cylinder(0.06, 0.08, 2.8, x, 0, hd + 0.2, 0x3a3f46, 6).sphere(0.18, x, 2.7, hd + 0.2, 0xfff3b0, {}, 6, 4);
+    }
+    any = true;
+  }
   if (any) parts.push(extra.build());
   return parts.length === 1 ? base : mergeParts(parts);
 }
 
 // ---------------- транспорт и деревья ----------------
 
+/** Мелочи легковушки: стёкла кабины, фары, стоп-сигналы, бамперы, зеркала (кузов длиной len, кабина над cx). */
+function carTrim(b: GeomBuilder, len: number, wid: number, cx: number, cl: number, top: number): void {
+  b.detailed(() => trim(b, len, wid, cx, cl, top));
+}
+
+function trim(b: GeomBuilder, len: number, wid: number, cx: number, cl: number, top: number): void {
+  const glass = 0x26323f;
+  b.box(cl + 0.06, 0.42, wid - 0.16, cx, top - 0.55, 0, glass).box(0.08, 0.4, wid - 0.3, cx + cl / 2 + 0.02, top - 0.55, 0, glass, { rz: 0.35 });
+  for (const z of [wid / 2 - 0.3, -wid / 2 + 0.3]) {
+    b.box(0.06, 0.18, 0.32, len / 2 + 0.01, 0.62, z, 0xfff4c8).box(0.06, 0.16, 0.3, -len / 2 - 0.01, 0.66, z, 0xd8323a);
+    b.box(0.14, 0.1, 0.12, cx + cl / 2 - 0.1, top - 0.45, z + Math.sign(z) * 0.2, 0x222222);
+  }
+  b.box(0.12, 0.2, wid + 0.04, len / 2, 0.38, 0, 0x3a3d42).box(0.12, 0.2, wid + 0.04, -len / 2, 0.38, 0, 0x3a3d42);
+}
+
 export function carModel(): BufferGeometry {
   const b = new GeomBuilder().box(3.4, 0.8, 1.6, 0, 0.35, 0, 0xffffff).box(1.7, 0.7, 1.4, -0.2, 1.1, 0, 0xc9d3dc);
+  carTrim(b, 3.4, 1.6, -0.2, 1.7, 1.8);
   for (const [x, z] of [[1.05, 0.82], [1.05, -0.82], [-1.05, 0.82], [-1.05, -0.82]]) {
     b.cylinder(0.36, 0.36, 0.3, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
   }
@@ -230,6 +259,10 @@ export function carModel(): BufferGeometry {
 
 export function truckModel(): BufferGeometry {
   const b = new GeomBuilder().box(1.6, 1.8, 1.9, 1.9, 0.4, 0, 0xc9d3dc).box(4.3, 2.3, 2, -0.9, 0.5, 0, 0xffffff);
+  b.detailed(() => {
+    b.box(0.06, 0.7, 1.6, 2.71, 1.25, 0, 0x26323f).box(0.06, 0.2, 0.3, 2.71, 0.6, 0.7, 0xfff4c8).box(0.06, 0.2, 0.3, 2.71, 0.6, -0.7, 0xfff4c8);
+    b.box(0.06, 0.2, 0.3, -3.06, 0.7, 0.8, 0xd8323a).box(0.06, 0.2, 0.3, -3.06, 0.7, -0.8, 0xd8323a).box(4.1, 0.12, 2.04, -0.9, 1.6, 0, 0xd5d9de);
+  });
   for (const [x, z] of [[1.9, 1], [1.9, -1], [-1.8, 1], [-1.8, -1], [-0.4, 1], [-0.4, -1]]) {
     b.cylinder(0.42, 0.42, 0.3, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
   }
@@ -239,6 +272,13 @@ export function truckModel(): BufferGeometry {
 export function busModel(): BufferGeometry {
   const b = new GeomBuilder().box(7.2, 2.5, 2.1, 0, 0.45, 0, 0xffffff);
   b.box(6.4, 0.8, 2.16, 0, 1.6, 0, 0x4a5a6a);
+  // лобовое стекло, двери, фары и маршрутное табло
+  b.detailed(() => {
+    b.box(0.06, 1.1, 1.8, 3.61, 1.3, 0, 0x26323f).box(0.06, 0.28, 1.2, 3.62, 2.45, 0, 0xffb347);
+    for (const x of [2.4, -0.6]) b.box(0.9, 1.7, 0.06, x, 0.5, 1.08, 0x33404d);
+    for (const z of [0.75, -0.75]) b.box(0.06, 0.2, 0.3, 3.61, 0.75, z, 0xfff4c8).box(0.06, 0.25, 0.25, -3.61, 0.8, z, 0xd8323a);
+    b.box(7, 0.25, 1.4, 0, 2.95, 0, 0xd5d9de);
+  });
   for (const [x, z] of [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]]) {
     b.cylinder(0.45, 0.45, 0.3, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
   }
@@ -252,6 +292,7 @@ function wheels(b: GeomBuilder, pts: [number, number][], r = 0.4): void {
 export function policeModel(): BufferGeometry {
   const b = new GeomBuilder().box(3.6, 0.8, 1.7, 0, 0.35, 0, 0xf2f4f7).box(1.7, 0.7, 1.45, -0.2, 1.1, 0, 0x30415e).box(0.9, 0.9, 0.12, 0, 0.4, 0.86, 0x2b58b8).box(0.9, 0.9, 0.12, 0, 0.4, -0.86, 0x2b58b8);
   b.box(0.3, 0.2, 0.5, -0.2, 1.8, 0.35, 0xd33a3a).box(0.3, 0.2, 0.5, -0.2, 1.8, -0.35, 0x3a6ad3);
+  carTrim(b, 3.6, 1.7, -0.2, 1.7, 1.8);
   wheels(b, [[1.1, 0.85], [1.1, -0.85], [-1.1, 0.85], [-1.1, -0.85]], 0.36);
   return b.build();
 }
@@ -259,18 +300,24 @@ export function policeModel(): BufferGeometry {
 export function taxiModel(): BufferGeometry {
   const b = new GeomBuilder().box(3.7, 0.8, 1.7, 0, 0.35, 0, 0xf2c230).box(1.8, 0.7, 1.5, -0.2, 1.1, 0, 0xf2c230).box(1.7, 0.45, 1.52, -0.2, 1.15, 0, 0x30415e).box(0.7, 0.25, 0.4, -0.2, 1.8, 0, 0xfff3b0);
   b.box(3.7, 0.12, 0.2, 0, 0.55, 0.86, 0x222222).box(3.7, 0.12, 0.2, 0, 0.55, -0.86, 0x222222);
+  carTrim(b, 3.7, 1.7, -0.2, 1.8, 1.8);
   wheels(b, [[1.1, 0.85], [1.1, -0.85], [-1.1, 0.85], [-1.1, -0.85]], 0.36);
   return b.build();
 }
 
 export function garbageModel(): BufferGeometry {
   const b = new GeomBuilder().box(1.6, 1.8, 2, 2.1, 0.4, 0, 0xe8d24a).box(4.6, 2.3, 2.1, -1, 0.5, 0, 0x3f8f5a).box(4.6, 0.3, 2.2, -1, 2.8, 0, 0x2c6b42);
+  b.detailed(() => {
+    b.box(0.06, 0.7, 1.7, 2.91, 1.3, 0, 0x26323f).box(0.06, 0.2, 0.3, 2.91, 0.6, 0.75, 0xfff4c8).box(0.06, 0.2, 0.3, 2.91, 0.6, -0.75, 0xfff4c8).box(0.3, 0.2, 0.6, 2.1, 2.25, 0, 0xffa020);
+    b.box(0.3, 1.6, 2.15, -3.35, 0.7, 0, 0x2c6b42);
+  });
   wheels(b, [[2.1, 1], [2.1, -1], [-2, 1], [-2, -1], [-0.6, 1], [-0.6, -1]], 0.42);
   return b.build();
 }
 
 export function hearseModel(): BufferGeometry {
   const b = new GeomBuilder().box(4.4, 0.9, 1.7, 0, 0.35, 0, 0x1f2024).box(1.6, 0.7, 1.5, 1, 1.15, 0, 0x2a2c32).box(2.4, 0.85, 1.55, -1, 1.15, 0, 0xcfd3d8).box(2.4, 0.15, 0.4, -1, 2, 0, 0x9aa0a6);
+  carTrim(b, 4.4, 1.7, 1, 1.6, 1.85);
   wheels(b, [[1.4, 0.86], [1.4, -0.86], [-1.4, 0.86], [-1.4, -0.86]], 0.36);
   return b.build();
 }

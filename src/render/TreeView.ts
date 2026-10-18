@@ -14,7 +14,7 @@ const PER_CELL = 4;
 /** сторона участка в клетках: растения разбиты на участки, чтобы невидимые (и вне теневой камеры) отсекались целиком */
 const TILE = 32;
 /** дальше этого расстояния от камеры — упрощённые модели */
-const LOD_FAR = 150;
+const LOD_FAR = 110;
 /** дальше этого — мелочь (цветы, камни) не рисуется: на экране она меньше пикселя */
 const SMALL_HIDE = 520;
 const SMALL: ReadonlySet<string> = new Set(['flowers', 'rock']);
@@ -179,7 +179,7 @@ export class TreeView implements View {
   private _updateLod(): void {
     const eye = this._eye();
     for (const tile of this._tiles.values()) {
-      const d = Math.hypot(tile.cx - eye.x, tile.cz - eye.z, eye.y * 0.6) - TILE * CELL * 0.5;
+      const d = Math.hypot(tile.cx - eye.x, tile.cz - eye.z, eye.y * 0.6) - TILE * CELL * 0.3;
       const lod = tile.lod === 0 ? (d > LOD_FAR + 15 ? 1 : 0) : d < LOD_FAR - 15 ? 0 : 1;
       const hidden = d > SMALL_HIDE;
       if (lod === tile.lod && hidden === tile.hidden) continue;
