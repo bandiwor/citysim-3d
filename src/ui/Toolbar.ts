@@ -78,6 +78,15 @@ export class Toolbar {
     this._renderOptions();
   }
 
+  /** Свернуть ряды разделов/инструментов (инструмент остаётся выбранным): на телефоне они не закрывают карту. */
+  setCollapsed(v: boolean): void {
+    this.el.classList.toggle('collapsed', v);
+  }
+
+  get collapsed(): boolean {
+    return this.el.classList.contains('collapsed');
+  }
+
   /** Открыт ли раздел с инструментами. */
   get isOpen(): boolean {
     return this._open !== '';
@@ -108,7 +117,12 @@ export class Toolbar {
     for (const it of this._game.toolbar.all().filter((i) => i.category === this._open)) {
       const b = h(
         'button',
-        { class: 'btn item', title: it.descKey ? t(it.descKey) : t(it.nameKey), onclick: () => this._game.bus.emit('tool:request', it.id) },
+        { class: 'btn item', title: it.descKey ? t(it.descKey) : t(it.nameKey), onclick: () => {
+          this._game.bus.emit('tool:request', it.id);
+          // на телефоне после выбора инструмента ряд сворачивается, чтобы не загораживать карту
+          if (matchMedia('(pointer: coarse)').matches) this.setCollapsed(true);
+        },
+        },
         h('span', { class: 'ic', text: it.icon }),
         h('span', { class: 'nm', text: t(it.nameKey) }),
         it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,

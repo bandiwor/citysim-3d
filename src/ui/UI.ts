@@ -125,6 +125,10 @@ export class UI {
     requestAnimationFrame(countFps);
     onLocaleChange(() => this.build());
     this.build();
+    _game.bus.on('tool:set', (id) => {
+      if (id === 'select') this._toolbar?.setCollapsed(false);
+      this._updateTouchBar();
+    });
     this.input.setTool('select');
     _game.message('msg.welcome', undefined, 'info');
   }
@@ -163,6 +167,7 @@ export class UI {
     );
     this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._update, this._fps, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
     this._buildTouchBar();
+    this.input.onTouchState = () => this._updateTouchBar();
     this._advMenu.style.display = 'none';
     this._drawTracker();
     this._modal.close();
@@ -177,22 +182,65 @@ export class UI {
 
   private _eventOpen = false;
 
-  /** Экранные кнопки для телефона: вместо Esc/ПКМ, Enter, поворота здания, режима кривой, кисти и наклона камеры. */
+  private _tb: Record<string, HTMLElement> = {};
+
+  /** Экранные кнопки для телефона: показываются по контексту (дорога, кисть, здание). Камера — жестами. */
   private _buildTouchBar(): void {
-    const cam = this._renderer.camera;
-    const b = (text: string, title: string, fn: () => void): HTMLElement => h('button', { class: 'btn icon', text, title: t(title), onclick: fn });
+    const b = (key: string, text: string, title: string, fn: () => void): HTMLElement => {
+      const el = h('button', { class: 'btn icon', text, title: t(title), onclick: fn });
+      this._tb[key] = el;
+      return el;
+    };
+    this._tb = {};
     this._touchBar.replaceChildren(
-      b('✖', 'touch.cancel', () => this.input.cancel()),
-      b('✔', 'touch.confirm', () => this.input.press('Enter')),
-      b('↺', 'touch.rotateL', () => this.input.press('Comma')),
-      b('↻', 'touch.rotateR', () => this.input.press('Period')),
-      b('〰', 'touch.curve', () => this.input.press(keys.code('curve'))),
-      b('🧲', 'touch.snap', () => this.input.press(keys.code('snap'))),
-      b('◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
-      b('◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
-      b('⤴', 'touch.tiltUp', () => cam.rotate(0, 0.18)),
-      b('⤵', 'touch.tiltDown', () => cam.rotate(0, -0.18)),
+      b('hide', '👁', 'touch.hideUi', () => this._setUiHidden(!document.body.classList.contains('ui-min'))),
+      b('panel', '🧰', 'touch.panel', () => this._toolbar?.setCollapsed(!this._toolbar.collapsed)),
+      b('mode', '✏️', 'touch.drawMode', () => {
+        this.input.touchDraw = !this.input.touchDraw;
+        this._updateTouchBar();
+      }),
+      b('rotL', '↺', 'touch.rotateL', () => this.input.press('Comma')),
+      b('rotR', '↻', 'touch.rotateR', () => this.input.press('Period')),
+      b('curve', '〰', 'touch.curve', () => this.input.press(keys.code('curve'))),
+      b('snap', '🧲', 'touch.snap', () => this.input.press(keys.code('snap'))),
+      b('brushS', '◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
+      b('brushB', '◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
+      b('cancel', '✖', 'touch.cancel', () => this.input.cancel()),
+      b('ok', '✔', 'touch.confirm', () => this.input.confirm()),
     );
+    this._updateTouchBar();
+  }
+
+  private _setUiHidden(v: boolean): void {
+    document.body.classList.toggle('ui-min', v);
+    this._updateTouchBar();
+  }
+
+  /** Показывает только нужные в данный момент кнопки. */
+  private _updateTouchBar(): void {
+    const id = this.input.toolId;
+    const road = id.startsWith('road:');
+    const brush = id.startsWith('zone:') || id.startsWith('terraform:') || id.startsWith('prop:') || id === 'bulldoze';
+    const place = id.startsWith('service:');
+    const active = !!id && id !== 'select';
+    const show = (k: string, on: boolean): void => {
+      if (this._tb[k]) this._tb[k].style.display = on ? '' : 'none';
+    };
+    show('panel', active && !!this._toolbar);
+    show('mode', brush);
+    show('rotL', place);
+    show('rotR', place);
+    show('curve', road);
+    show('snap', road);
+    show('brushS', brush);
+    show('brushB', brush);
+    show('cancel', active || this.input.hasPending);
+    show('ok', active && !brush);
+    this._tb.ok?.classList.toggle('ready', this.input.hasPending);
+    this._tb.mode?.classList.toggle('on', !this.input.touchDraw);
+    if (this._tb.mode) this._tb.mode.textContent = this.input.touchDraw ? '✏️' : '✋';
+    this._tb.hide?.classList.toggle('on', document.body.classList.contains('ui-min'));
+    document.body.classList.toggle('tool-on', active);
   }
 
   openGoals(): void {

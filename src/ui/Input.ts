@@ -21,15 +21,24 @@ export class Input implements ToolContext {
   /** активные касания: два пальца — жесты камеры (сдвиг, щипок, поворот) */
   private _touches = new Map<number, { x: number; y: number }>();
   private _gesture: { cx: number; cy: number; dist: number; ang: number } | null = null;
+  /** жест двух пальцев: режим фиксируется по первому явному движению, чтобы щипок, поворот и наклон не мешали друг другу */
+  private _gm: { mode: '' | 'tilt' | 'pinch'; zoom: number; rot: number; tilt: number; zoomOn: boolean; rotOn: boolean } = { mode: '', zoom: 0, rot: 0, tilt: 0, zoomOn: false, rotOn: false };
+  /** один палец: пока не сдвинулся — это тап, после порога — сдвиг камеры */
+  private _tp: { id: number; sx: number; sy: number; lx: number; ly: number; moved: boolean } | null = null;
+  /** касание: кисти рисуют пальцем (true) или палец двигает камеру (false) */
+  touchDraw = true;
   /** после жеста игнорируем оставшийся палец до полного отпускания */
   private _gestureTail = false;
   /** касание: инструмент с подтверждением — первое нажатие показывает превью, второе рядом ставит */
   private _pendingTap: Pointer | null = null;
+  private _pendingScreen = { x: 0, y: 0 };
   /** первое лицо: ввод инструментов отключён */
   locked = false;
   private _preview = emptyPreview();
   onHint: (text: string, x: number, y: number) => void = () => {};
   onHover: (p: Pointer | null) => void = () => {};
+  /** сообщает UI о состоянии касательного ввода (ждёт подтверждения и т.п.) */
+  onTouchState: () => void = () => {};
 
   constructor(private _canvas: HTMLCanvasElement, private _renderer: Renderer, game: Game) {
     this.game = game;
@@ -124,15 +133,37 @@ export class Input implements ToolContext {
     this._lastP = null;
     this._touches.clear();
     this._gesture = null;
+    this._tp = null;
+    this._pendingTap = null;
     this._gestureTail = false;
     this.tool?.hover?.(null, this);
     this.clearPreview();
   }
 
-  /** Инструменты, где касанием легко ошибиться: ставятся вторым касанием в то же место. */
-  private get _confirmTool(): boolean {
+  /** Кисти: водят пальцем по карте (в режиме «рисовать»). */
+  private get _brushTool(): boolean {
     const id = this._toolId;
-    return id.startsWith('service:') || id.startsWith('light:') || id === 'stop' || id === 'walk';
+    return id.startsWith('zone:') || id.startsWith('terraform:') || id.startsWith('prop:') || id === 'bulldoze';
+  }
+
+  /** Касание: «ставящие» инструменты (дороги, здания, службы…) — тап показывает точку, подтверждение ставит; палец при этом свободно двигает камеру. */
+  private get _confirmTool(): boolean {
+    return !this.tool?.panOnDrag && !this._brushTool;
+  }
+
+  /** Есть точка, ждущая подтверждения (кнопка ✔ или повторный тап). */
+  get hasPending(): boolean {
+    return !!this._pendingTap;
+  }
+
+  /** Подтвердить ожидающую точку (кнопка ✔); без неё — нажатие Enter инструмента. */
+  confirm(): void {
+    const p = this._pendingTap;
+    if (!p || !this.tool) return this.press('Enter');
+    this._pendingTap = null;
+    this.tool.down?.(p, this);
+    this.tool.up?.(p, this);
+    this.onTouchState();
   }
 
   private _gestureState(): { cx: number; cy: number; dist: number; ang: number } | null {
@@ -145,11 +176,13 @@ export class Input implements ToolContext {
   /** Касание: true — событие поглощено жестом камеры. */
   private _touchDown(e: PointerEvent): boolean {
     this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    this._canvas.setPointerCapture(e.pointerId);
+    this._capture(e.pointerId);
     if (this._touches.size >= 2) {
       // второй палец отменяет начатое действие инструмента и включает камеру
       if (this._down) this.cancelDrag();
+      this._tp = null;
       this._gesture = this._gestureState();
+      this._gm = { mode: '', zoom: 0, rot: 0, tilt: 0, zoomOn: false, rotOn: false };
       this._gestureTail = true;
       return true;
     }
@@ -157,6 +190,10 @@ export class Input implements ToolContext {
     return false;
   }
 
+  /**
+   * Два пальца: щипок — масштаб, разворот — вращение, оба пальца вместе вверх/вниз — наклон (вниз — вид сверху).
+   * Режим выбирается по первому явному движению; в «щипке» мелкие дрожания масштаба/поворота игнорируются (мёртвая зона).
+   */
   private _touchMove(e: PointerEvent): boolean {
     if (!this._touches.has(e.pointerId)) return false;
     this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -165,15 +202,62 @@ export class Input implements ToolContext {
     const prev = this._gesture;
     if (g && prev) {
       const cam = this._renderer.camera;
-      cam.panPixels(g.cx - prev.cx, g.cy - prev.cy);
-      cam.zoom(prev.dist / g.dist);
+      const m = this._gm;
+      const dz = Math.log(g.dist / prev.dist);
       let da = g.ang - prev.ang;
       while (da > Math.PI) da -= Math.PI * 2;
       while (da < -Math.PI) da += Math.PI * 2;
-      cam.rotate(-da, 0);
+      const dy = g.cy - prev.cy;
+      m.zoom += dz;
+      m.rot += da;
+      m.tilt += dy;
+      if (!m.mode) {
+        const zoomS = Math.abs(m.zoom) / 0.07;
+        const rotS = Math.abs(m.rot) / 0.12;
+        const tiltS = Math.abs(m.tilt) / 16;
+        if (tiltS >= 1 && tiltS > zoomS && tiltS > rotS) m.mode = 'tilt';
+        else if (zoomS >= 1 || rotS >= 1) m.mode = 'pinch';
+      }
+      if (m.mode === 'tilt') cam.rotate(0, dy * 0.006);
+      else if (m.mode === 'pinch') {
+        if (!m.zoomOn && Math.abs(m.zoom) > 0.05) m.zoomOn = true;
+        if (!m.rotOn && Math.abs(m.rot) > 0.1) m.rotOn = true;
+        if (m.zoomOn) cam.zoom(Math.exp(-dz));
+        if (m.rotOn) cam.rotate(-da, 0);
+      }
     }
     this._gesture = g;
     return true;
+  }
+
+  /** Один палец по карте: сдвиг камеры (после порога); true — событие обработано. */
+  private _touchPan(e: PointerEvent): boolean {
+    const tp = this._tp;
+    if (!tp || tp.id !== e.pointerId) return false;
+    if (!tp.moved && Math.hypot(e.clientX - tp.sx, e.clientY - tp.sy) > 9) tp.moved = true;
+    if (tp.moved) this._renderer.camera.panPixels(e.clientX - tp.lx, e.clientY - tp.ly);
+    tp.lx = e.clientX;
+    tp.ly = e.clientY;
+    return true;
+  }
+
+  /** Короткое касание без сдвига. */
+  private _tap(e: PointerEvent): void {
+    const p = this._pointer(e);
+    if (!p || !this.tool) return;
+    if (!this._confirmTool) {
+      this.tool.hover?.(p, this);
+      this.tool.down?.(p, this);
+      this.tool.up?.(p, this);
+      return;
+    }
+    const near = this._pendingTap && Math.hypot(this._pendingScreen.x - e.clientX, this._pendingScreen.y - e.clientY) < 40;
+    if (near) return this.confirm();
+    this._pendingTap = p;
+    this._pendingScreen = { x: e.clientX, y: e.clientY };
+    this._lastP = p;
+    this.tool.hover?.(p, this);
+    this.onTouchState();
   }
 
   /** Прервать зажатый ввод без вызова up (второй палец, смена режима). */
@@ -184,6 +268,14 @@ export class Input implements ToolContext {
     this.clearPreview();
   }
 
+  private _capture(id: number): void {
+    try {
+      this._canvas.setPointerCapture(id);
+    } catch {
+      // указатель уже отпущен — захват не нужен
+    }
+  }
+
   /** Нажатие «клавиши» с экранных кнопок. */
   press(code: string): void {
     if (this.locked) return;
@@ -192,7 +284,13 @@ export class Input implements ToolContext {
 
   /** Экранная кнопка «отмена» (аналог ПКМ / Esc). */
   cancel(): void {
-    this._pendingTap = null;
+    if (this._pendingTap) {
+      // сначала снимаем только отложенную точку (инструмент остаётся)
+      this._pendingTap = null;
+      this.clearPreview();
+      this.onTouchState();
+      return;
+    }
     this._escape();
   }
 
@@ -200,19 +298,13 @@ export class Input implements ToolContext {
     if (this.locked) return;
     if (e.pointerType === 'touch' && this._touchDown(e)) return;
     if (this._gestureTail) return;
-    if (e.pointerType === 'touch' && this._confirmTool) {
-      const p = this._pointer(e);
-      if (!p) return;
-      const near = this._pendingTap && Math.hypot(this._pendingTap.x - p.x, this._pendingTap.z - p.z) < 10;
-      if (!near) {
-        this._pendingTap = p;
-        this._lastP = p;
-        this.tool?.hover?.(p, this);
-        return;
-      }
-      this._pendingTap = null;
+    if (e.pointerType === 'touch' && !(this._brushTool && this.touchDraw)) {
+      // палец двигает камеру; короткий тап — действие инструмента
+      this._capture(e.pointerId);
+      this._tp = { id: e.pointerId, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
+      return;
     }
-    this._canvas.setPointerCapture(e.pointerId);
+    this._capture(e.pointerId);
     this._btn = e.button;
     this._last = { x: e.clientX, y: e.clientY };
     this._moved = 0;
@@ -225,7 +317,7 @@ export class Input implements ToolContext {
   }
 
   private _onMove(e: PointerEvent): void {
-    if (e.pointerType === 'touch' && !this.locked && this._touchMove(e)) return;
+    if (e.pointerType === 'touch' && !this.locked && (this._touchMove(e) || this._touchPan(e))) return;
     if (this._gestureTail) return;
     const dx = e.clientX - this._last.x;
     const dy = e.clientY - this._last.y;
@@ -256,6 +348,12 @@ export class Input implements ToolContext {
       if (this._touches.size < 2) this._gesture = null;
       if (this._gestureTail) {
         if (this._touches.size === 0) this._gestureTail = false;
+        return;
+      }
+      const tp = this._tp;
+      if (tp && tp.id === e.pointerId) {
+        this._tp = null;
+        if (!tp.moved && !this.locked) this._tap(e);
         return;
       }
     }

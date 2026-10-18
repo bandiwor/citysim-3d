@@ -1281,3 +1281,35 @@ body {
 .cheats .srow { margin-top: 2px; }
 .cheats .srow-t { gap: 1px; }
 .cheats > .dim { margin-bottom: 4px; }
+
+/* ---------- мобильное управление ---------- */
+html, body { touch-action: manipulation; }
+.rotate-guard { display: none; }
+@media (pointer: coarse) and (orientation: portrait) {
+  .rotate-guard {
+    position: fixed; inset: 0; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; text-align: center; background: radial-gradient(ellipse at 50% 40%, #1b2a4d, #0b1226 75%); color: var(--text, #e8ecf2);
+  }
+  .rot-icon { font-size: 64px; animation: rot-turn 2.4s ease-in-out infinite; }
+  .rot-title { font-size: 22px; font-weight: 600; }
+  .rot-text { max-width: 320px; font-size: 15px; opacity: 0.8; line-height: 1.4; }
+}
+@keyframes rot-turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+.touchbar .btn.on { background: #2f6fd6; border-color: #7fb2ff; }
+.touchbar .btn.ready { background: #2e9e5b; border-color: #8ff0b4; animation: ok-pulse 1.1s ease-in-out infinite; }
+@keyframes ok-pulse { 50% { box-shadow: 0 0 0 6px #2e9e5b44; } }
+.toolbar.collapsed .tb-items, .toolbar.collapsed .tb-cats { display: none !important; }
+@media (pointer: coarse) {
+  body.tool-on .tracker { display: none !important; }
+  body.ui-min .hud, body.ui-min .toolbar, body.ui-min .clock, body.ui-min .tracker, body.ui-min .inspector, body.ui-min .toasts { display: none !important; }
+}
+
+/* ---------- полосы прокрутки в стиле игры ---------- */
+* { scrollbar-width: thin; scrollbar-color: #4a5a78 transparent; }
+@supports not (scrollbar-color: auto) {
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: #4a5a78; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background: #6f84ad; background-clip: padding-box; border: 2px solid transparent; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+}
