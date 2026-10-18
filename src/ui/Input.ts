@@ -10,6 +10,8 @@ const emptyPreview = (): PreviewState => ({ quads: [], ribbon: null, ring: null,
 export class Input implements ToolContext {
   readonly game: Game;
   shift = false;
+  touch = false;
+  metersPerPx = 0.25;
   tool: Tool | null = null;
   private _toolId = '';
   private _tools = new Map<string, Tool>();
@@ -113,7 +115,12 @@ export class Input implements ToolContext {
   }
 
   private _pointer(e: PointerEvent | MouseEvent): Pointer | null {
-    const p = this._renderer.camera.groundAt(e.clientX, e.clientY);
+    const cam = this._renderer.camera;
+    const p = cam.groundAt(e.clientX, e.clientY);
+    this.touch = (e as PointerEvent).pointerType === 'touch';
+    // масштаб в точке ввода: на сколько метров сдвигается земля при сдвиге на 40 пикселей
+    const q = p && cam.groundAt(e.clientX + 40, e.clientY);
+    if (p && q) this.metersPerPx = Math.max(0.02, Math.hypot(q.x - p.x, q.z - p.z) / 40);
     return p ? { x: p.x, z: p.z, shift: e.shiftKey } : null;
   }
 

@@ -39,6 +39,10 @@ export interface ToolContext {
   clearPreview(): void;
   /** состояние клавиш-модификаторов */
   shift: boolean;
+  /** ввод пальцем: точность ниже, инструменты расширяют привязку и сами подбирают место */
+  touch?: boolean;
+  /** сколько метров мира приходится на пиксель экрана в точке ввода (для привязки «в пикселях») */
+  metersPerPx?: number;
 }
 
 export interface ToolOption {

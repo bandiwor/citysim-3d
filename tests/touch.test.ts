@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Input } from '../src/ui/Input';
-import { createGame } from './helpers';
+import { createGame, road } from './helpers';
 
 type Handler = (e: unknown) => void;
 
 /** Минимальные заглушки DOM и камеры: проверяем только логику жестов. */
-function setup(toolId: string) {
+function setup(toolId: string, prepare?: (game: ReturnType<typeof createGame>) => void, scale = 0.1) {
   const handlers = new Map<string, Handler[]>();
   const on = (type: string, fn: Handler): void => void handlers.set(type, [...(handlers.get(type) ?? []), fn]);
   const target = { addEventListener: on, setPointerCapture: () => {} };
   vi.stubGlobal('window', { addEventListener: on });
   vi.stubGlobal('document', { addEventListener: on });
-  const cam = { groundAt: (x: number, y: number) => ({ x: x / 10, z: y / 10 }), panPixels: vi.fn(), zoom: vi.fn(), rotate: vi.fn() };
+  const cam = { groundAt: (x: number, y: number) => ({ x: x * scale, z: y * scale }), panPixels: vi.fn(), zoom: vi.fn(), rotate: vi.fn() };
   const renderer = { camera: cam, zoneLayer: { setGridVisible: () => {} }, preview: { apply: () => {}, clear: () => {} } };
   const game = createGame();
+  prepare?.(game);
   const input = new Input(target as unknown as HTMLCanvasElement, renderer as never, game);
   input.setTool(toolId);
   const fire = (type: string, id: number, x: number, y: number): void => {
@@ -134,5 +135,24 @@ describe('сенсорное управление', () => {
     }
     expect(cam.rotate.mock.calls.some(([yaw]) => yaw !== 0)).toBe(true);
     expect(cam.rotate.mock.calls.every(([, pitch]) => pitch === 0)).toBe(true);
+  });
+
+  it('здание пальцем: привязка к дороге с учётом отдаления камеры и подбор свободного места', () => {
+    // 1 пиксель = 1 м (камера отдалена): касание в 70 м от дороги всё равно прилипает к ней
+    const { input, game, fire } = setup('', (g) => road(g, 100, 200, 400, 200), 1);
+    const id = [...game.toolbar.all()].find((i) => i.id.startsWith('service:') && game.services.require(i.id.slice(8)).size[0] <= 2)!.id;
+    input.setTool(id);
+    const tap = (x: number, y: number): void => {
+      fire('pointerdown', 1, x, y);
+      fire('pointerup', 1, x, y);
+    };
+    tap(250, 270);
+    tap(251, 271);
+    expect(game.world.buildings.size).toBe(1);
+    // касание прямо в уже стоящее здание: место подбирается рядом, а не «занято»
+    const b = [...game.world.buildings.values()][0];
+    tap(b.x, b.z);
+    tap(b.x + 1, b.z + 1);
+    expect(game.world.buildings.size).toBe(2);
   });
 });

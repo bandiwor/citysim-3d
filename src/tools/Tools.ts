@@ -329,20 +329,47 @@ export class PlaceTool implements Tool {
   readonly showGrid = true;
   private _rot = 0;
   private _last: Pointer | null = null;
+  private _lastSpot: { x: number; z: number; rot: number; snapped: boolean } | null = null;
 
   constructor(private _game: Game, private _defId: string) {
     this.id = `service:${_defId}`;
   }
 
-  private _spot(p: Pointer): { x: number; z: number; rot: number; snapped: boolean } {
-    const s = this._game.builder.snapService(this._defId, p.x, p.z);
-    return s.snapped ? s : { ...s, rot: this._rot * (Math.PI / 2) };
+  private _spot(p: Pointer, ctx?: ToolContext): { x: number; z: number; rot: number; snapped: boolean } {
+    const b = this._game.builder;
+    // пальцем точно не попасть: привязка к дороге в радиусе ~90 пикселей экрана (не меньше 40 м)
+    const radius = ctx?.touch ? Math.max(40, 90 * (ctx.metersPerPx ?? 0)) : 40;
+    const at = (x: number, z: number): { x: number; z: number; rot: number; snapped: boolean } => {
+      const s = b.snapService(this._defId, x, z, radius);
+      return s.snapped ? s : { ...s, rot: this._rot * (Math.PI / 2) };
+    };
+    const s = at(p.x, p.z);
+    if (!ctx?.touch || b.canPlaceService(this._defId, s.x, s.z, s.rot).ok) return s;
+    // касание: если место занято — ищем ближайшее свободное вокруг точки касания (кольцами)
+    const step = Math.max(3, (this._game.services.require(this._defId).size[0] * CELL) / 3);
+    for (let r = step; r <= radius; r += step) {
+      const n = Math.max(8, Math.round((2 * Math.PI * r) / step));
+      let best: ReturnType<typeof at> | null = null;
+      let bestD = Infinity;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const c = at(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r);
+        const d = Math.hypot(c.x - p.x, c.z - p.z);
+        if (d < bestD && b.canPlaceService(this._defId, c.x, c.z, c.rot).ok) {
+          best = c;
+          bestD = d;
+        }
+      }
+      if (best) return best;
+    }
+    return s;
   }
 
   hover(p: Pointer | null, ctx: ToolContext): void {
     if (!p) return ctx.clearPreview();
     this._last = p;
-    const s = this._spot(p);
+    const s = this._spot(p, ctx);
+    this._lastSpot = s;
     const res = this._game.builder.canPlaceService(this._defId, s.x, s.z, s.rot);
     const obb = this._game.builder.serviceObb(this._defId, s.x, s.z, s.rot);
     const def = this._game.services.require(this._defId);
@@ -354,7 +381,8 @@ export class PlaceTool implements Tool {
   }
 
   down(p: Pointer, ctx: ToolContext): void {
-    const s = this._spot(p);
+    // подтверждение касанием: ставим ровно то, что было показано в превью
+    const s = ctx.touch && this._lastSpot && this._last && Math.hypot(this._last.x - p.x, this._last.z - p.z) < 0.01 ? this._lastSpot : this._spot(p, ctx);
     const r = this._game.builder.placeService(this._defId, s.x, s.z, s.rot);
     if (r.reasonKey) {
       this._game.message(r.reasonKey, undefined, 'bad');

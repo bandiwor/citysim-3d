@@ -410,10 +410,10 @@ export class Builder {
   }
 
   /** Положение службы рядом с дорогой: фасадом к ближайшей дороге, вплотную к краю. */
-  snapService(defId: string, x: number, z: number): ServiceSpot {
+  snapService(defId: string, x: number, z: number, radius = 40): ServiceSpot {
     const world = this._game.world;
     const d = this._game.services.require(defId);
-    const hit = world.graph.nearest(x, z, 40, (e) => e.access);
+    const hit = world.graph.nearest(x, z, radius, (e) => e.access);
     if (!hit) return { x, z, rot: 0, snapped: false };
     const side = Math.sign(hit.tx * (z - hit.z) - hit.tz * (x - hit.x)) || 1;
     const ox = -hit.tz * side;
