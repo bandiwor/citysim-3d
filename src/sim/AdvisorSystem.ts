@@ -1,3 +1,4 @@
+import { isBuilding } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { MessageParams } from '../core/types';
@@ -46,7 +47,7 @@ export class AdvisorSystem implements System {
     const u = g.get('utility');
     const san = g.get('sanitation');
     const pop = st.population;
-    const list = g.world.list();
+    const list = g.world.list().filter((b) => !isBuilding(b));
     const out: Issue[] = [];
     const sev = (s: Issue['sev'], id: string, icon: string, params?: MessageParams, at?: { x: number; z: number }): void => {
       out.push({ id, sev: s, icon, key: `advisor.${id}`, params, x: at?.x, z: at?.z });
@@ -72,6 +73,8 @@ export class AdvisorSystem implements System {
     const dead = list.filter((b) => b.abandoned);
     if (dead.length) sev('warn', 'abandoned', '🏚️', { n: dead.length }, first(dead));
 
+    const sick = list.filter((b) => b.pop > 0 && b.sick / b.pop >= g.config.disease.spreadThreshold);
+    if (sick.length) sev('warn', 'epidemic', '🤒', { n: sick.length }, first(sick));
     const over = list.filter((b) => b.garbage > g.config.garbage.cap * g.config.garbage.unhappyAt);
     if (over.length) sev('warn', 'garbage', '🗑️', { n: over.length }, first(over));
     if (pop > 120 && !services('landfill') && !services('incinerator') && !services('recycling')) sev('warn', 'noLandfill', '🗑️');

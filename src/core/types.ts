@@ -55,6 +55,22 @@ export interface Building {
   incident: number;
   /** маска установленных улучшений службы */
   up: number;
+  /** секунд, сколько ждут вывоза тела (0 — нет ожидающих) */
+  deadFor: number;
+  /** больных жителей и переболевших (иммунитет) */
+  sick: number;
+  immune: number;
+  /**
+   * Стройка: прогресс 0..1 (1 — готово). Для нового здания (conKind 0) оно не работает, пока не достроится;
+   * при повышении уровня (1) и улучшении службы (2) здание работает, а рядом стоят леса и кран.
+   */
+  con: number;
+  conKind: 0 | 1 | 2;
+  /** к чему идёт стройка: уровень зоны / маска улучшений */
+  conLevel: number;
+  conUp: number;
+  /** длительность стройки, секунд игрового времени */
+  conDur: number;
 }
 
 export interface BusStop {
@@ -76,4 +92,14 @@ export interface Pointer {
   x: number;
   z: number;
   shift: boolean;
+}
+
+/** Здание в процессе новой стройки: ещё не работает (не потребляет ресурсы, не платит налоги, не даёт покрытия). */
+export function isBuilding(b: Building): boolean {
+  return b.con < 1 && b.conKind === 0;
+}
+
+/** Не действует: заброшено или ещё строится. */
+export function isIdle(b: Building): boolean {
+  return b.abandoned || isBuilding(b);
 }

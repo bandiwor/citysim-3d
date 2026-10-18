@@ -8,6 +8,8 @@ export const defaultConfig = {
     size: 80,
     waterLevel: -0.9,
     /** допуск «ровной» высоты под застройку */
+    /** шаг сетки привязки дорог, ед. */
+    snapGrid: 8,
     flatEpsilon: 0.05,
     /** отступ от края карты, где нельзя строить, ед. */
     edgeMargin: 6,
@@ -77,6 +79,8 @@ export const defaultConfig = {
     minSegmentLength: 8,
     /** сдвиг привязки к существующему узлу при пересечении, ед. */
     junctionMerge: 7,
+    /** здания из заливки зонами сносятся автоматически, если дорога проходит через них */
+    autoDemolish: true,
     /** множитель отступа дороги от зданий */
     buildingClearance: 0.4,
     /** шаг угловой привязки (Shift), градусы */
@@ -137,12 +141,12 @@ export const defaultConfig = {
     accessSlack: 3,
   },
   growth: {
-    spawnInterval: 0.4,
+    spawnInterval: 1.2,
     evalInterval: 1,
     spawnTries: 40,
     minDemand: 0.03,
-    spawnPerDemand: 3,
-    abandonAfterOutage: 30,
+    spawnPerDemand: 2,
+    abandonAfterOutage: 90,
     abandonHappiness: 0.12,
     abandonHappinessChance: 0.05,
     removeAfterAbandon: 25,
@@ -185,6 +189,9 @@ export const defaultConfig = {
     interval: 0.5,
     smoothing: 0.35,
     taxSlack: 9,
+    /** во сколько раз пустующие мощности гасят спрос на новые здания; «мягкость» знаменателя */
+    vacancyK: 1.4,
+    vacancyScale: 24,
     taxK: 0.045,
     res: { gapK: 1.5, base: 0.3, happinessK: 0.7, minScale: 60 },
     com: { popRatio: 0.28, gapK: 1.6, base: 0.12, minScale: 40 },
@@ -235,9 +242,37 @@ export const defaultConfig = {
     unhappyAt: 0.6,
     unhappy: -0.12,
   },
+  disease: {
+    /** болезни начинаются, когда открыта медицина и в городе не меньше стольких жителей */
+    minPopulation: 60,
+    interval: 2,
+    /** вероятность вспышки в начале месяца */
+    outbreakPerMonth: 0.25,
+    /** заражение внутри дома (в секунду, на пару больной×здоровый / жителей) */
+    homeSpread: 0.03,
+    /** заражение соседних домов от дома, где больны не меньше spreadThreshold жителей; радиус, ед. */
+    neighborSpread: 0.025,
+    neighborRadius: 36,
+    spreadThreshold: 0.18,
+    /** больных не больше такой доли жителей дома, и такой доли города (иначе соседей не заражают) */
+    maxSickFrac: 0.45,
+    cityCap: 0.2,
+    /** выздоровление в секунду; добавка от покрытия здравоохранения */
+    recover: 0.006,
+    treat: 0.07,
+    immuneDecay: 0.003,
+    /** смертность больных в секунду; во сколько раз покрытие здравоохранения снижает её / заражение */
+    deathRate: 0.0006,
+    treatDeath: 0.75,
+    treatSpread: 0.6,
+    /** потеря счастья дома при полном заражении */
+    unhappy: -0.35,
+    /** больные не работают: доля от рабочей силы */
+    workLoss: 0.8,
+  },
   death: {
     /** смертность в секунду на жителя */
-    rate: 0.00002,
+    rate: 0.000012,
     /** во сколько раз здравоохранение снижает смертность при полном покрытии */
     healthEffect: 0.6,
     /** множитель смертности, пока тела не вывезены */
@@ -246,6 +281,11 @@ export const defaultConfig = {
     cap: 8,
     interval: 2,
     unhappy: -0.15,
+    /** через сколько секунд невывезенные тела показывают значок, и когда жителям рядом становится не по себе */
+    iconAfter: 40,
+    unhappyAfter: 110,
+    neighborRadius: 30,
+    neighborUnhappy: -0.05,
   },
   crime: {
     interval: 1,
@@ -253,6 +293,8 @@ export const defaultConfig = {
     baseRate: 0.00007,
     /** доля вероятности у самого участка полиции (растёт до 1 на границе радиуса) */
     stationDeterrence: 0.2,
+    /** преступность начинается с такого населения (и после открытия полиции) */
+    minPopulation: 80,
     unemploymentBoost: 2.5,
     policeEffect: 0.9,
     /** добыча за рабочее место / жителя */
@@ -264,6 +306,20 @@ export const defaultConfig = {
     timeout: 24,
     maxActive: 3,
     unhappy: -0.1,
+  },
+  construction: {
+    /** здания строятся по стадиям: фундамент → каркас с краном → готово */
+    enabled: true,
+    /** длительность стройки жилого/коммерческого/промышленного здания по уровню, секунд игрового времени */
+    zone: [10, 16, 26] as number[],
+    /** служба: база + по стоимости (ограничено), повышение уровня зоны и улучшение службы */
+    serviceBase: 12,
+    servicePerCost: 0.0012,
+    serviceMax: 40,
+    levelUp: 14,
+    upgrade: 9,
+    /** доля времени, пока виден только фундамент */
+    foundationShare: 0.2,
   },
   progress: {
     /** карьера: содержимое открывается по росту населения; false — песочница */
@@ -412,9 +468,12 @@ export const defaultConfig = {
     interval: 0.5,
     extinguishBase: 0.04,
     extinguishCoverage: 0.7,
-    spreadCoverage: 0.35,
-    spreadChance: 0.05,
-    spreadDistance: 12,
+    /** шанс перекидывания огня в секунду; ослабление покрытием пожарной части; радиус; потолок одновременных пожаров */
+    spreadChance: 0.06,
+    coverageSpreadCut: 0.85,
+    spreadDistance: 22,
+    minFires: 3,
+    maxFireShare: 0.12,
     burnTime: 16,
   },
   save: {

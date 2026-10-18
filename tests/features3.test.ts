@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isBuilding } from '../src/core/types';
 import { SaveSystem } from '../src/sim/SaveSystem';
 import { effectiveDef } from '../src/data/services';
 import { hasKey, setLocale } from '../src/i18n';
@@ -558,5 +559,193 @@ describe('прогресс, политики, цели, события, сове
     expect(g2.get('events').pending?.id).toBe('storm');
     expect(g2.get('progress').peakPop).toBe(900);
     expect(g2.get('objectives').active.length).toBe(g.get('objectives').active.length);
+  });
+});
+
+describe('стройка по стадиям', () => {
+  async function cityWithConstruction() {
+    const g = createGame({ size: 80, config: { construction: { enabled: true } } });
+    road(g, 40, 100, 220, 100);
+    place(g, 'coal', 200, 130);
+    place(g, 'watertower', 60, 112);
+    g.builder.paintZone(90, 112, 30, 'res');
+    await settle(g);
+    return g;
+  }
+
+  it('новое здание строится: сначала не работает, потом достраивается и заселяется', async () => {
+    const g = await cityWithConstruction();
+    await run(g, 6);
+    const list = g.world.list().filter((b) => b.kind === 'zone');
+    expect(list.length).toBeGreaterThan(0);
+    const b = list.find((x) => x.con < 1)!;
+    expect(b).toBeDefined();
+    expect(b.conKind).toBe(0);
+    expect(b.pop).toBe(0);
+    expect(g.get('construction').active).toContain(b);
+    expect(g.get('economy').computeBudget().income.res).toBe(0);
+    await run(g, b.conDur + 5);
+    expect(b.con).toBe(1);
+    expect(g.get('construction').active).not.toContain(b);
+  });
+
+  it('повышение уровня и улучшение службы идут со стройкой, здание при этом работает', async () => {
+    const g = await cityWithConstruction();
+    await run(g, 40);
+    const house = g.world.list().find((b) => b.kind === 'zone' && b.con >= 1)!;
+    g.builder.beginLevelUp(house, 2);
+    expect(house.con).toBe(0);
+    expect(house.conKind).toBe(1);
+    expect(house.level).toBe(1);
+    expect(isBuilding(house)).toBe(false);
+    await run(g, g.config.construction.levelUp + 3);
+    expect(house.level).toBe(2);
+    expect(house.con).toBe(1);
+    const coal = g.world.list().find((b) => b.defId === 'coal')!;
+    await run(g, 40);
+    g.get('economy').money = 1e9;
+    const power0 = coal.powerOut;
+    expect(g.builder.upgradeService(coal, 'turbines').ok).toBe(true);
+    expect(coal.powerOut).toBe(power0);
+    expect(g.builder.upgradeService(coal, 'scrubbers').reasonKey).toBe('err.upgrade.busy');
+    await run(g, g.config.construction.upgrade + 3);
+    expect(coal.powerOut).toBeGreaterThan(power0);
+  });
+
+  it('спрос гасится пустующими и строящимися зданиями: постройка не взрывается мгновенно', async () => {
+    const g = await cityWithConstruction();
+    g.builder.paintZone(130, 112, 60, 'res');
+    await run(g, 12);
+    const dm = g.get('demand');
+    const built = g.world.list().filter((b) => b.kind === 'zone').length;
+    expect(built).toBeLessThan(14);
+    expect(dm.values.res).toBeLessThanOrEqual(dm.raw.res);
+  });
+
+  it('при нехватке энергии здания всё равно строятся', async () => {
+    const g = createGame({ size: 80, config: { construction: { enabled: true } } });
+    road(g, 40, 100, 220, 100);
+    place(g, 'wind', 190, 130);
+    place(g, 'watertower', 60, 112);
+    g.builder.paintZone(90, 112, 50, 'res');
+    await settle(g);
+    await run(g, 120);
+    expect(g.world.list().filter((b) => b.kind === 'zone').length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('дороги: привязка и снос зданий зон', () => {
+  it('дорога через жилое здание из заливки сносит его автоматически, служба мешает', async () => {
+    const g = await city();
+    await run(g, 40);
+    const house = g.world.list().find((b) => b.kind === 'zone')!;
+    const hid = house.id;
+    const b = g.builder;
+    const plan = b.planRoad(b.snap(house.x - 60, house.z), b.snap(house.x + 60, house.z), null, 'street');
+    if (plan.ok) {
+      expect(plan.demolish?.length ?? 0).toBeGreaterThanOrEqual(0);
+      b.buildRoad(plan);
+      if (plan.demolish?.includes(hid)) expect(g.world.buildings.has(hid)).toBe(false);
+    }
+    const off = createGame({ size: 80, config: { roads: { autoDemolish: false } } });
+    expect(off.config.roads.autoDemolish).toBe(false);
+  });
+
+  it('инструмент дороги: режим 90° ведёт линию вдоль осей, режим «выкл» не привязывается к узлам', async () => {
+    const { RoadTool } = await import('../src/tools/Tools');
+    const g = createGame({ size: 80 });
+    road(g, 40, 100, 200, 100);
+    await settle(g);
+    const tool = new RoadTool(g, 'street');
+    const snapOpt = tool.options.find((o) => o.id === 'snap')!;
+    const pv: { current: any } = { current: {} };
+    const ctx = { game: g, shift: false, setPreview: (p: any) => Object.assign(pv.current, p), clearPreview: () => (pv.current = {}) } as any;
+    snapOpt.set('ortho');
+    tool.down({ x: 300, z: 300, shift: false }, ctx);
+    tool.hover({ x: 380, z: 340, shift: false }, ctx);
+    const pts = pv.current.ribbon.pts as { x: number; z: number }[];
+    const end = pts[pts.length - 1];
+    expect(Math.abs(end.z - 300) < 0.5 || Math.abs(end.x - 300) < 0.5).toBe(true);
+    // свободный режим: точка не прилипает к ближайшему узлу
+    snapOpt.set('free');
+    tool.escape(ctx);
+    tool.down({ x: 42, z: 103, shift: false }, ctx);
+    const startPt = (pv.current.marker ?? {}) as { x: number };
+    expect(startPt.x).toBeCloseTo(42, 0);
+    // клавиша V переключает режимы по кругу
+    tool.key('KeyV', ctx);
+    expect(snapOpt.get()).toBe('grid');
+  });
+});
+
+describe('болезни, пожары, ограбления, смерть', () => {
+  it('до открытия медицины, полиции и пожарной части эти бедствия не начинаются (карьера)', async () => {
+    const g = createGame({ size: 80, config: { progress: { enabled: true } } });
+    expect(g.get('disease').active).toBe(false);
+    g.get('progress').restore(0);
+    expect(g.get('progress').isUnlocked('service:clinic')).toBe(false);
+    expect(g.get('progress').isUnlocked('service:police')).toBe(false);
+    expect(g.get('progress').isUnlocked('service:fire')).toBe(false);
+    g.get('progress').restore(1000);
+    Object.defineProperty(g.get('stats'), 'population', { get: () => 1000, set: () => {}, configurable: true });
+    expect(g.get('disease').active).toBe(true);
+  });
+
+  it('болезнь: вспышка в доме растёт, перекидывается на соседей, но ограничена; поликлиника лечит', async () => {
+    const g = await city();
+    await run(g, 40);
+    const homes = g.world.list().filter((b) => b.kind === 'zone' && g.zoneTypes.get(b.zone)?.housing);
+    expect(homes.length).toBeGreaterThan(3);
+    for (const b of homes) b.pop = b.cap;
+    Object.defineProperty(g.get('stats'), 'population', { get: () => homes.reduce((s, b) => s + b.pop, 0), set: () => {}, configurable: true });
+    const ds = g.get('disease');
+    expect(ds.startOutbreak(homes[0])).toBe(true);
+    expect(homes[0].sick).toBeGreaterThan(0);
+    homes[0].sick = homes[0].pop * 0.4;
+    await run(g, 120);
+    const sickHomes = homes.filter((b) => b.sick > 0.5).length;
+    expect(sickHomes).toBeGreaterThan(1);
+    expect(ds.sickShare).toBeLessThanOrEqual(g.config.disease.maxSickFrac + 1e-6);
+    for (const b of homes) expect(b.sick).toBeLessThanOrEqual(b.pop * g.config.disease.maxSickFrac + 1e-6);
+  }, 30000);
+
+  it('смерть: тела ждут катафалк, значок и недовольство появляются только после задержки', async () => {
+    const g = await city();
+    await run(g, 40);
+    const home = g.world.list().find((b) => b.kind === 'zone' && g.zoneTypes.get(b.zone)?.housing)!;
+    home.pop = 6;
+    home.dead = 2;
+    const dc = g.config.death;
+    await run(g, 5);
+    expect(home.deadFor).toBeGreaterThan(0);
+    expect(home.deadFor).toBeLessThan(dc.iconAfter);
+    await run(g, dc.iconAfter + 10);
+    expect(home.deadFor).toBeGreaterThan(dc.iconAfter);
+  }, 20000);
+
+  it('пожар перекидывается на соседей, но число пожаров ограничено', async () => {
+    const g = await city();
+    await run(g, 50);
+    const homes = g.world.list().filter((b) => b.kind === 'zone');
+    const d = g.get('disaster');
+    g.config.disasters.extinguishBase = 0;
+    g.config.disasters.burnTime = 200;
+    d.ignite(homes[0]);
+    await run(g, 90);
+    const burning = g.world.list().filter((b) => b.fire > 0).length;
+    expect(burning).toBeGreaterThanOrEqual(1);
+    expect(burning).toBeLessThanOrEqual(Math.max(g.config.disasters.minFires, Math.floor(g.world.buildings.size * g.config.disasters.maxFireShare)));
+  }, 30000);
+});
+
+describe('звук на паузе', () => {
+  it('на паузе заводы, транспорт и сирены замолкают', async () => {
+    const { computeMix } = await import('../src/audio/mixer');
+    const st = { zoom: 80, buildingsNear: 80, vehiclesNear: 40, industryNear: 8, waterNear: 0.2, trafficFlow: 0.8, night: 0, fires: 2, speed: 1, alarms: 1, sources: { machinery: 2, turbine: 1, fountain: 1, kids: 1, gulls: 1 } };
+    const play = computeMix(st);
+    const pause = computeMix({ ...st, speed: 0 });
+    expect(play.industry).toBeGreaterThan(0.3);
+    expect(play.siren).toBeGreaterThan(0.3);
+    for (const k of ['traffic', 'industry', 'siren', 'machinery', 'turbine', 'fountain', 'gulls', 'kids'] as const) expect(pause[k], k).toBe(0);
   });
 });

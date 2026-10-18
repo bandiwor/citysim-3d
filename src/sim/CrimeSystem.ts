@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import { CELL } from '../config/constants';
 import { effectiveDef } from '../data/services';
 import { t } from '../i18n';
@@ -47,7 +48,7 @@ export class CrimeSystem implements System {
   rateOf(b: Building): number {
     const g = this._game;
     const c = g.config.crime;
-    if (b.abandoned || b.kind !== 'zone') return 0;
+    if (isIdle(b) || b.kind !== 'zone') return 0;
     const housing = g.zoneTypes.require(b.zone).housing;
     const activity = housing ? Math.min(1, b.pop / 10) : Math.min(1, b.workers / 8);
     const police = g.get('maps').sample('police', b.x, b.z);
@@ -99,7 +100,7 @@ export class CrimeSystem implements System {
     const g = this._game;
     this._stations = [];
     for (const b of g.world.list()) {
-      if (b.kind !== 'service' || b.abandoned) continue;
+      if (b.kind !== 'service' || isIdle(b)) continue;
       const d = effectiveDef(g.services.require(b.defId), b.up);
       if (d.coverage?.type !== 'police' || !(b.powered || d.powerNeed === 0)) continue;
       this._stations.push({ x: b.x, z: b.z, r: d.coverage.radius * CELL });
@@ -110,6 +111,8 @@ export class CrimeSystem implements System {
     const g = this._game;
     const c = g.config.crime;
     this._refreshStations();
+    // пока полиция не открыта (или город совсем мал), новых ограблений нет
+    const quiet = !g.get('progress').isUnlocked('service:police') || g.get('stats').population < c.minPopulation;
     for (const b of g.world.list()) {
       if (b.incident > 0) {
         b.incident -= dt;
@@ -124,6 +127,7 @@ export class CrimeSystem implements System {
         }
         continue;
       }
+      if (quiet) continue;
       const p = this.rateOf(b) * dt;
       if (p > 0 && Math.random() < p) this.start(b);
     }

@@ -36,7 +36,7 @@ export class EventSystem implements System {
     const pop = g.get('stats').population;
     if (pop < c.minPopulation || Math.random() > c.chancePerMonth) return;
     const active = new Set(g.get('mods').active.map((m) => m.id));
-    const pool = CITY_EVENTS.filter((e) => pop >= e.minPop && !active.has(`event:${e.id}`));
+    const pool = CITY_EVENTS.filter((e) => pop >= e.minPop && !active.has(`event:${e.id}`) && (!e.needs || g.get('progress').isUnlocked(e.needs)));
     if (!pool.length) return;
     let x = Math.random() * pool.reduce((s, e) => s + e.weight, 0);
     let pick = pool[0];

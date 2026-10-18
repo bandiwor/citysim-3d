@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building } from '../core/types';
@@ -216,7 +217,7 @@ export class TrafficSystem implements System {
     this._shops = [];
     this._inds = [];
     for (const b of w.list()) {
-      if (b.abandoned || !b.access) continue;
+      if (isIdle(b) || !b.access) continue;
       if (this._game.zoneTypes.get(b.zone)?.housing) this._homes.push(b);
       else if (b.jobs > 0) {
         this._works.push(b);

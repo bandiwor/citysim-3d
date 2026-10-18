@@ -127,6 +127,7 @@ export class Inspector {
       if (e.coverage) row(t('inspector.radius'), `${Math.round(e.coverage.radius * 10) / 10} ${t('unit.cells')}`);
       if (e.pollution) row(t('inspector.pollution'), `${Math.round(e.pollution.strength * 100)}%`);
     }
+    if (b.con < 1) row(t('inspector.construction'), `${b.conKind === 0 ? '🏗️' : b.conKind === 1 ? '⬆️' : '🔧'} ${fmtPercent(b.con)}`);
     row(t('inspector.road'), b.access ? '✅' : `❌ ${t('inspector.noRoad')}`);
     if (b.powerNeed > 0) row(`${t('inspector.electricity')} (${fmtNumber(b.powerNeed)})`, b.powered ? '✅' : `❌ ${t('inspector.none')}`);
     if (b.waterNeed > 0) row(`${t('inspector.waterSupply')} (${fmtNumber(b.waterNeed)})`, b.watered ? '✅' : `❌ ${t('inspector.none')}`);
@@ -134,6 +135,7 @@ export class Inspector {
     if (b.fire > 0) row(t('inspector.state'), `🔥 ${t('inspector.fire')}`);
     if (b.incident > 0) row(t('inspector.state'), `🚨 ${t('inspector.robbery')}`);
     if (b.kind === 'zone') row(t('inspector.garbage'), bar(b.garbage / g.config.garbage.cap, false));
+    if (b.sick >= 0.5) row(t('inspector.sick'), `🤒 ${fmtNumber(b.sick)} / ${fmtNumber(b.pop)}`);
     if (b.dead > 0) row(t('inspector.state'), `⚰️ ${t('inspector.dead', { n: b.dead })}`);
     const ups: HTMLElement[] = [];
     if (b.kind === 'service') {

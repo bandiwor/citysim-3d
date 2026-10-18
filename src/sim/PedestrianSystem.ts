@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import { Rng } from '../core/Rng';
@@ -48,7 +49,7 @@ export class PedestrianSystem implements System {
     if (!f) return 0;
     let pop = 0;
     for (const b of g.world.list()) {
-      if (b.kind !== 'zone' || b.abandoned) continue;
+      if (b.kind !== 'zone' || isIdle(b)) continue;
       if (Math.abs(b.x - f.x) < c.radius && Math.abs(b.z - f.z) < c.radius) pop += b.pop;
     }
     const tod = g.get('time').tod;

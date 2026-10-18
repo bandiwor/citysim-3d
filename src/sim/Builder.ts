@@ -52,6 +52,8 @@ export interface RoadPlan extends PlaceResult {
   /** вершины рельефа, которые будут срезаны под дорогу (автовыравнивание) */
   level?: number[];
   levelCost?: number;
+  /** здания зон, которые будут снесены под дорогу */
+  demolish?: number[];
 }
 
 export interface ServiceSpot {
@@ -150,10 +152,15 @@ export class Builder {
       }
     }
 
-    // здания: расстояние до каждого отрезка дороги, а не только до точек
+    // здания: расстояние до каждого отрезка дороги, а не только до точек.
+    // Здания из заливки зонами сносятся автоматически, службы мешают.
+    const demolish = new Set<number>();
     for (const p of pts) {
       for (const bd of world.buildingsNear(p.x, p.z, 30)) {
-        if (obbDist(world.obbOf(bd), p) < hw + cfg.roads.buildingClearance) block('building', bd.x, bd.z, 'err.road.building', bd.id);
+        if (obbDist(world.obbOf(bd), p) < hw + cfg.roads.buildingClearance) {
+          if (bd.kind === 'zone' && cfg.roads.autoDemolish) demolish.add(bd.id);
+          else block('building', bd.x, bd.z, 'err.road.building', bd.id);
+        }
       }
     }
 
@@ -207,7 +214,7 @@ export class Builder {
 
     const cost = (length / cfg.roads.costUnit) * type.cost + (waterLen / cfg.roads.costUnit) * type.cost * (cfg.roads.bridgeCostMul - 1);
     const levelCost = level ? level.length * cfg.terraform.costPerVertex : 0;
-    return { ...plan, ok: true, cost: cost + levelCost, crossings, level, levelCost, blockers: level ? blockers : [] };
+    return { ...plan, ok: true, cost: cost + levelCost, crossings, level, levelCost, blockers: level ? blockers : [], demolish: [...demolish] };
   }
 
   /** Вершины рельефа четырёх углов каждой клетки, в которую попали точки на холме. */
@@ -268,6 +275,11 @@ export class Builder {
     const cfg = this._cfg;
     const type = game.roadTypes.require(plan.typeId);
     if (!game.get('economy').spend(plan.cost)) return fail('err.money');
+    // здания зон на пути дороги сносятся до укладки
+    for (const id of plan.demolish ?? []) {
+      const bd = world.buildings.get(id);
+      if (bd) this.removeBuilding(bd);
+    }
     if (plan.level?.length) {
       this.applyLevel(plan.level);
       game.sfx('terraform');
@@ -459,6 +471,7 @@ export class Builder {
     for (const c of game.world.zones.near(x, z, Math.hypot(obb.hw, obb.hd) + CELL)) {
       if (!c.building && obbDist(obb, c) < CELL / 2) game.world.zones.remove(c.id);
     }
+    this.beginBuild(b);
     this.addBuilding(b);
     game.bus.emit('zones:changed');
     game.sfx('build');
@@ -484,9 +497,17 @@ export class Builder {
     if (b.up & (1 << i)) return fail('err.upgrade.done');
     const u = def.upgrades![i];
     if (!game.get('economy').spend(u.cost)) return fail('err.money');
-    b.up |= 1 << i;
-    this.applyStats(b);
-    this.updateAccess(b);
+    if (b.con < 1) return fail('err.upgrade.busy');
+    if (this._cfg.construction.enabled) {
+      b.con = 0;
+      b.conKind = 2;
+      b.conUp = b.up | (1 << i);
+      b.conDur = this._duration(b, 2);
+    } else {
+      b.up |= 1 << i;
+      this.applyStats(b);
+      this.updateAccess(b);
+    }
     game.bus.emit('building:updated', b);
     game.bus.emit('economy:changed');
     game.sfx('levelup');
@@ -695,6 +716,7 @@ export class Builder {
     const b = this.createBuilding('zone', zoneId, cell.x, cell.z, cell.rot, CELL - 1, CELL - 1, cell.id);
     b.access = cell.edge;
     b.accessS = cell.s;
+    this.beginBuild(b);
     this.addBuilding(b);
     return b;
   }
@@ -739,6 +761,14 @@ export class Builder {
       stored: 0,
       incident: 0,
       up: 0,
+      deadFor: 0,
+      sick: 0,
+      immune: 0,
+      con: 1,
+      conKind: 0,
+      conLevel: 0,
+      conUp: 0,
+      conDur: 0,
     };
     this.applyStats(b);
     return b;
@@ -802,6 +832,53 @@ export class Builder {
     }
     world.unregisterBuilding(b);
     this._game.bus.emit('building:removed', b);
+  }
+
+  // ================= стройка =================
+
+  private _duration(b: Building, kind: 0 | 1 | 2): number {
+    const c = this._cfg.construction;
+    if (kind === 1) return c.levelUp;
+    if (kind === 2) return c.upgrade;
+    if (b.kind === 'zone') return c.zone[Math.min(c.zone.length, b.level) - 1] ?? c.zone[0];
+    const d = this._game.services.require(b.defId);
+    return Math.min(c.serviceMax, c.serviceBase + d.cost * c.servicePerCost);
+  }
+
+  /** Новое здание начинает строиться (если стадии строительства включены). */
+  beginBuild(b: Building): void {
+    if (!this._cfg.construction.enabled) return;
+    b.con = 0;
+    b.conKind = 0;
+    b.conDur = this._duration(b, 0);
+  }
+
+  /** Здание уровня L → L+1: леса и кран, затем смена модели. */
+  beginLevelUp(b: Building, level: number): void {
+    if (!this._cfg.construction.enabled) return this.setLevel(b, level);
+    b.con = 0;
+    b.conKind = 1;
+    b.conLevel = level;
+    b.conDur = this._duration(b, 1);
+    this._game.bus.emit('building:updated', b);
+  }
+
+  /** Стройка закончена: применяет результат и обновляет здание. */
+  finishBuild(b: Building): void {
+    const kind = b.conKind;
+    b.con = 1;
+    b.conKind = 0;
+    if (kind === 1) {
+      b.level = b.conLevel;
+      b.variant = Math.floor(Math.random() * this._game.config.render.zoneVariants);
+      this.applyStats(b);
+      this._game.sfx('levelup');
+    } else if (kind === 2) {
+      b.up = b.conUp;
+      this.applyStats(b);
+      this._game.sfx('levelup');
+    } else this._game.sfx('build');
+    this._game.bus.emit('building:updated', b);
   }
 
   /** Меняет уровень здания (апгрейд/даунгрейд). */

@@ -46,7 +46,6 @@ export function computeMix(s: AmbientState, p: MixParams = defaultMixParams): Am
   const close = 1 - smoothstep(p.nearZoom, p.farZoom, s.zoom);
   const urban = clamp(s.buildingsNear / 45, 0, 1);
   const wild = 1 - clamp(s.buildingsNear / 60, 0, 1);
-  const pause = s.speed === 0 ? 0.35 : 1;
   const out: AmbientTargets = {
     city: clamp(urban * (0.25 + 0.75 * close) * (1 - 0.35 * s.night), 0, 1),
     traffic: clamp((s.vehiclesNear / 25) * (0.15 + 0.85 * close) * (1 + (1 - s.trafficFlow) * 0.5), 0, 1),
@@ -62,6 +61,10 @@ export function computeMix(s: AmbientState, p: MixParams = defaultMixParams): Am
     gulls: clamp((s.sources?.gulls ?? 0) * close, 0, 1),
     kids: clamp((s.sources?.kids ?? 0) * (1 - s.night) * close, 0, 1),
   };
-  for (const k of AMBIENT_LAYERS) if (k !== 'siren') out[k] *= pause;
+  if (s.speed === 0) {
+    // пауза: механические и аварийные звуки замолкают, остаётся тихий фон
+    for (const k of ['traffic', 'industry', 'siren', 'turbine', 'machinery', 'fountain', 'gulls', 'kids'] as const) out[k] = 0;
+    for (const k of ['city', 'wind', 'birds', 'crickets', 'water'] as const) out[k] *= 0.35;
+  }
   return out;
 }

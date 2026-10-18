@@ -38,6 +38,9 @@ export class SelectTool implements Tool {
 }
 
 type RoadMode = 'straight' | 'curve';
+/** привязка: умная (узлы, дороги, Shift — 15°), выключена, сетка, строго под 90° */
+type SnapMode = 'smart' | 'free' | 'grid' | 'ortho';
+const SNAP_MODES: SnapMode[] = ['smart', 'free', 'grid', 'ortho'];
 
 /**
  * Свободное строительство дорог: клик — начало, клик — конец (прямая); в режиме «кривая» между ними
@@ -48,6 +51,9 @@ export class RoadTool implements Tool {
   readonly showGrid = true;
   readonly options: ToolOption[];
   private _mode: RoadMode = 'straight';
+  private _snapMode: SnapMode = 'smart';
+  /** опорное направление для режима 90° */
+  private _ref = 0;
   private _start: RoadSnap | null = null;
   private _ctrl: Vec2 | null = null;
   private _downAt: Vec2 | null = null;
@@ -69,7 +75,48 @@ export class RoadTool implements Tool {
           this._ctrl = null;
         },
       },
+      {
+        id: 'snap',
+        labelKey: 'opt.roadSnap',
+        choices: SNAP_MODES.map((m) => ({ id: m, labelKey: `opt.roadSnap.${m}` })),
+        get: () => this._snapMode,
+        set: (id) => (this._snapMode = id as SnapMode),
+      },
     ];
+  }
+
+  /** Точка с учётом выбранной привязки. */
+  private _snapPoint(p: Pointer, from?: Vec2): RoadSnap {
+    const b = this._game.builder;
+    const cell = this._game.config.world.snapGrid;
+    switch (this._snapMode) {
+      case 'free':
+        return { x: p.x, z: p.z, kind: 'free' };
+      case 'grid':
+        return b.snap(Math.round(p.x / cell) * cell, Math.round(p.z / cell) * cell, { from, shift: false });
+      case 'ortho': {
+        if (!from) return b.snap(p.x, p.z);
+        // направление — ближайшее кратное 90° к опорному (вдоль или поперёк начатой/пересекаемой дороги)
+        const dx = p.x - from.x;
+        const dz = p.z - from.z;
+        const len = Math.hypot(dx, dz);
+        const q = Math.PI / 2;
+        const a = this._ref + Math.round((Math.atan2(dz, dx) - this._ref) / q) * q;
+        const proj = Math.max(0, dx * Math.cos(a) + dz * Math.sin(a));
+        void len;
+        return b.snap(from.x + Math.cos(a) * proj, from.z + Math.sin(a) * proj, { from });
+      }
+      default:
+        return b.snap(p.x, p.z, { from, shift: p.shift });
+    }
+  }
+
+  /** Опорный угол для режима 90°: касательная дороги в точке старта, иначе ось мира. */
+  private _refFor(start: RoadSnap): number {
+    const graph = this._game.world.graph;
+    if (start.kind === 'free') return 0;
+    const hit = graph.nearest(start.x, start.z, 4);
+    return hit ? Math.atan2(hit.tz, hit.tx) : 0;
   }
 
   hover(p: Pointer | null, ctx: ToolContext): void {
@@ -83,9 +130,10 @@ export class RoadTool implements Tool {
   }
 
   down(p: Pointer, ctx: ToolContext): void {
-    const snap = this._game.builder.snap(p.x, p.z, { from: this._start ?? undefined, shift: p.shift });
+    const snap = this._snapPoint(p, this._start ?? undefined);
     if (!this._start) {
       this._start = snap;
+      this._ref = this._refFor(snap);
       this._downAt = { x: p.x, z: p.z };
     } else if (this._mode === 'curve' && !this._ctrl) {
       this._ctrl = { x: snap.x, z: snap.z };
@@ -99,7 +147,7 @@ export class RoadTool implements Tool {
   up(p: Pointer, ctx: ToolContext): void {
     // протяжка мышью от начала = второй клик
     if (this._start && this._downAt && this._mode === 'straight' && Math.hypot(p.x - this._downAt.x, p.z - this._downAt.z) > 14) {
-      this._finish(this._game.builder.snap(p.x, p.z, { from: this._start, shift: p.shift }), ctx);
+      this._finish(this._snapPoint(p, this._start), ctx);
     }
     this._downAt = null;
   }
@@ -116,6 +164,11 @@ export class RoadTool implements Tool {
   }
 
   key(code: string, ctx: ToolContext): boolean {
+    if (code === 'KeyV') {
+      this._snapMode = SNAP_MODES[(SNAP_MODES.indexOf(this._snapMode) + 1) % SNAP_MODES.length];
+      if (this._last) this._refresh(this._last, ctx);
+      return true;
+    }
     if (code !== 'KeyC') return false;
     this.options[0].set(this._mode === 'straight' ? 'curve' : 'straight');
     if (this._last) this._refresh(this._last, ctx);
@@ -134,6 +187,7 @@ export class RoadTool implements Tool {
     const r = b.buildRoad(plan);
     if (r.ok) {
       this._start = b.snap(end.x, end.z);
+      this._ref = this._refFor(this._start);
       this._ctrl = null;
     } else if (r.reasonKey) this._game.message(r.reasonKey, undefined, 'bad');
     void ctx;
@@ -141,7 +195,7 @@ export class RoadTool implements Tool {
 
   private _refresh(p: Pointer, ctx: ToolContext): void {
     const b = this._game.builder;
-    const snap = b.snap(p.x, p.z, { from: this._start ?? undefined, shift: p.shift });
+    const snap = this._snapPoint(p, this._start ?? undefined);
     const marker = { x: snap.x, z: snap.z, ok: true };
     if (!this._start) return ctx.setPreview({ marker, ribbon: null, quads: [], marks: [], hint: t('hint.roadStart') });
     const ctrl = this._mode === 'curve' ? this._ctrl : null;
@@ -161,6 +215,12 @@ export class RoadTool implements Tool {
         const bd = world.buildings.get(m.buildingId);
         return bd ? [{ x: bd.x, z: bd.z, rot: bd.rot, w: bd.w + 0.6, d: bd.d + 0.6, ok: false }] : [];
       });
+    // здания зон на пути дороги будут снесены: подсвечиваем оранжевым
+    for (const id of plan.demolish ?? []) {
+      const bd = world.buildings.get(id);
+      if (bd) quads.push({ x: bd.x, z: bd.z, rot: bd.rot, w: bd.w + 0.6, d: bd.d + 0.6, ok: true, color: 0xff9f40 } as (typeof quads)[number]);
+    }
+    if (plan.ok && plan.demolish?.length) hint += ` · 🏚️ ${t('hint.autoDemolish', { n: plan.demolish.length })}`;
     const marks = plan.blockers.filter((m) => !m.buildingId).map((m) => ({ x: m.x, z: m.z }));
     ctx.setPreview({ marker: { ...marker, ok: plan.ok }, ribbon: { pts: plan.pts, hw: plan.hw, ok: plan.ok }, quads, marks, hint });
   }

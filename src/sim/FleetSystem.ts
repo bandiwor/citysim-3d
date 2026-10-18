@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
@@ -45,7 +46,7 @@ export class FleetSystem implements System {
   facilities(kind: VehicleKind): Building[] {
     const g = this._game;
     return g.world.list().filter((b) => {
-      if (b.kind !== 'service' || b.abandoned) return false;
+      if (b.kind !== 'service' || isIdle(b)) return false;
       const d = g.services.require(b.defId);
       return d.fleet?.kind === kind && (b.powered || d.powerNeed === 0) && b.access > 0;
     });

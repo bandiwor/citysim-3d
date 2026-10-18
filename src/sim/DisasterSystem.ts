@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import type { Building } from '../core/types';
@@ -21,12 +22,12 @@ export class DisasterSystem implements System {
     this.enabled = game.config.disasters.enabled;
     game.bus.on('time:month', () => {
       const c = game.config.disasters;
-      if (this.enabled && game.world.buildings.size > c.minBuildings && Math.random() < c.firePerMonth * game.get('mods').mul('fire')) this.ignite();
+      if (this.enabled && game.get('progress').isUnlocked('service:fire') && game.world.buildings.size > c.minBuildings && Math.random() < c.firePerMonth * game.get('mods').mul('fire')) this.ignite();
     });
   }
 
   ignite(target?: Building): void {
-    const list = this._game.world.list().filter((b) => b.kind === 'zone' && !b.abandoned && !b.fire);
+    const list = this._game.world.list().filter((b) => b.kind === 'zone' && !isIdle(b) && !b.fire);
     const b = target ?? list[Math.floor(Math.random() * list.length)];
     if (!b) return;
     b.fire = 0.001;
@@ -53,9 +54,16 @@ export class DisasterSystem implements System {
         continue;
       }
       b.fire += step;
-      if (cov < c.spreadCoverage && Math.random() < c.spreadChance * step) {
-        const near = g.world.buildingsNear(b.x, b.z, c.spreadDistance).filter((n) => n.id !== b.id && n.kind === 'zone' && !n.fire);
-        if (near.length) this.ignite(near[Math.floor(Math.random() * near.length)]);
+      // огонь перекидывается на соседей: чем дольше горит и чем слабее покрытие, тем вероятнее; число пожаров ограничено
+      const fires = g.world.list().filter((x) => x.fire > 0).length;
+      const maxFires = Math.max(c.minFires, Math.floor(g.world.buildings.size * c.maxFireShare));
+      const p = c.spreadChance * (1 - cov * c.coverageSpreadCut) * (0.5 + b.fire / c.burnTime) * step;
+      if (fires < maxFires && Math.random() < p) {
+        const near = g.world.buildingsNear(b.x, b.z, c.spreadDistance).filter((n) => n.id !== b.id && n.kind === 'zone' && !isIdle(n) && !n.fire);
+        if (near.length) {
+          this.ignite(near[Math.floor(Math.random() * near.length)]);
+          g.message('msg.fireSpread', undefined, 'bad');
+        }
       }
       if (b.fire > c.burnTime) {
         g.builder.removeBuilding(b);

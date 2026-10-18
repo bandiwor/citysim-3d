@@ -16,6 +16,8 @@ export interface CityEventDef {
   icon: string;
   weight: number;
   minPop: number;
+  /** содержимое, которое должно быть открыто (ключ ProgressSystem), иначе событие не наступает */
+  needs?: string;
   /** последний вариант — «по умолчанию» (выбирается, если игрок не ответил) */
   options: CityEventOption[];
 }
@@ -50,9 +52,10 @@ export const CITY_EVENTS: CityEventDef[] = [
     icon: '🤧',
     weight: 2,
     minPop: 250,
+    needs: 'service:clinic',
     options: [
-      { id: 'vaccinate', cost: (p) => p * 3 },
-      { id: 'ignore', days: 50, mul: { death: 4 }, add: { happiness: -0.04 } },
+      { id: 'vaccinate', cost: (p) => p * 3, days: 60, mul: { disease: 0.4 } },
+      { id: 'ignore', days: 50, mul: { disease: 2.5, death: 2 }, add: { happiness: -0.04 } },
     ],
   },
   {
@@ -90,6 +93,7 @@ export const CITY_EVENTS: CityEventDef[] = [
     icon: '🥷',
     weight: 2,
     minPop: 350,
+    needs: 'service:police',
     options: [
       { id: 'patrols', cost: (p) => 800 + p, days: 50, mul: { crime: 1.3 } },
       { id: 'ignore', days: 50, mul: { crime: 2.4 } },
@@ -100,6 +104,7 @@ export const CITY_EVENTS: CityEventDef[] = [
     icon: '⛈️',
     weight: 2,
     minPop: 200,
+    needs: 'service:fire',
     options: [
       { id: 'prevent', cost: () => 500, days: 30, mul: { fire: 1.2 } },
       { id: 'ignore', days: 30, mul: { fire: 3 } },

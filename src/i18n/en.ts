@@ -644,6 +644,20 @@ export const en = {
   'touch.brushBigger': 'Bigger brush',
   'touch.tiltUp': 'Tilt camera up',
   'touch.tiltDown': 'Tilt camera down',
+  'err.upgrade.busy': 'Construction in progress',
+  'inspector.construction': 'Under construction',
+  'msg.outbreak': 'A disease outbreak has started in a home!',
+  'msg.fireSpread': 'The fire is spreading to a neighbouring building!',
+  'inspector.sick': 'Sick',
+  'advisor.epidemic': '{n} home(s) with an outbreak — build a clinic or hospital',
+  'fx.disease': 'Infection',
+  'opt.roadSnap': 'Snap',
+  'opt.roadSnap.smart': 'Smart',
+  'opt.roadSnap.free': 'Off',
+  'opt.roadSnap.grid': 'Grid',
+  'opt.roadSnap.ortho': '90°',
+  'hint.autoDemolish': '{n} zoned building(s) will be demolished',
+  'touch.snap': 'Snapping mode (V)',
   'help.html': `
     <h4>How to play</h4>
     <ol>

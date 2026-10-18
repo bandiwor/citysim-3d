@@ -271,10 +271,15 @@ describe('GrowthSystem', () => {
     }
   });
 
-  it('без электричества и воды здания не растут', async () => {
+  it('без электричества и воды здания строятся, но не работают: нет жителей и налогов', async () => {
     const g = await town({ power: false, water: false });
-    await run(g, 30);
-    expect(g.world.list().filter((b) => b.kind === 'zone')).toHaveLength(0);
+    await run(g, 40);
+    g.get('utility').recompute();
+    const zones = g.world.list().filter((b) => b.kind === 'zone');
+    expect(zones.length).toBeGreaterThan(0);
+    expect(zones.every((b) => !b.powered && !b.watered)).toBe(true);
+    expect(g.get('stats').population).toBe(0);
+    expect(g.get('economy').computeBudget().income.res).toBe(0);
   });
 
   it('жители заселяются постепенно, а потеря коммуналки ведёт к заброшенности и сносу', async () => {

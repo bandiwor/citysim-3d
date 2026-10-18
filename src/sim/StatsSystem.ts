@@ -1,3 +1,4 @@
+import { isBuilding, isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 
@@ -58,6 +59,7 @@ export class StatsSystem implements System {
     this.abandoned = 0;
     const list = g.world.list();
     for (const b of list) {
+      if (isBuilding(b)) continue;
       if (b.abandoned) {
         this.abandoned++;
         continue;
@@ -83,7 +85,7 @@ export class StatsSystem implements System {
     this.jobsInd = ji;
     this.jobsOther = jo;
     this.jobsTotal = jc + ji + jo;
-    this.workforce = pop * (c.workforceRatio + c.educationBonus * (n ? eduSum / n : 0));
+    this.workforce = pop * (c.workforceRatio + c.educationBonus * (n ? eduSum / n : 0)) * (1 - g.config.disease.workLoss * Math.min(1, g.get('disease').sickShare));
     this.employed = Math.min(this.workforce, this.jobsTotal);
     this.unemployment = this.workforce > c.unemploymentMinWorkforce ? 1 - this.employed / this.workforce : 0;
     this.happiness = n ? hapSum / n : 0.5;
@@ -95,7 +97,7 @@ export class StatsSystem implements System {
 
     const fill = this.jobsTotal > 0 ? Math.min(1, this.workforce / this.jobsTotal) : 0;
     for (const b of list) {
-      b.workers = g.zoneTypes.get(b.zone)?.housing || b.abandoned ? 0 : Math.round(b.jobs * fill);
+      b.workers = g.zoneTypes.get(b.zone)?.housing || isIdle(b) ? 0 : Math.round(b.jobs * fill);
     }
   }
 }

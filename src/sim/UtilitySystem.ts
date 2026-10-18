@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 
@@ -75,13 +76,13 @@ export class UtilitySystem implements System {
     const pm = g.get('mods').mul('powerDemand');
 
     for (const b of list) {
-      if (b.powerOut > 0 && !b.abandoned) {
+      if (b.powerOut > 0 && !isIdle(b)) {
         this.powerSupply += b.powerOut;
         if (b.comp >= 0) pLeft[b.comp] += b.powerOut;
       }
     }
     for (const b of list) {
-      const need = b.abandoned ? 0 : b.powerNeed * pm;
+      const need = isIdle(b) ? 0 : b.powerNeed * pm;
       this.powerDemand += need;
       if (need <= 0) b.powered = true;
       else if (b.comp >= 0 && pLeft[b.comp] >= need) {
@@ -90,13 +91,13 @@ export class UtilitySystem implements System {
       } else b.powered = false;
     }
     for (const b of list) {
-      if (b.waterOut > 0 && b.powered && !b.abandoned) {
+      if (b.waterOut > 0 && b.powered && !isIdle(b)) {
         this.waterSupply += b.waterOut;
         if (b.comp >= 0) wLeft[b.comp] += b.waterOut;
       }
     }
     for (const b of list) {
-      const need = b.abandoned ? 0 : b.waterNeed;
+      const need = isIdle(b) ? 0 : b.waterNeed;
       this.waterDemand += need;
       if (need <= 0) b.watered = true;
       else if (b.comp >= 0 && wLeft[b.comp] >= need) {

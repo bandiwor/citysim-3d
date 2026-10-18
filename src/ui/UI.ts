@@ -127,6 +127,7 @@ export class UI {
       b('↺', 'touch.rotateL', () => this.input.press('Comma')),
       b('↻', 'touch.rotateR', () => this.input.press('Period')),
       b('〰', 'touch.curve', () => this.input.press('KeyC')),
+      b('🧲', 'touch.snap', () => this.input.press('KeyV')),
       b('◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
       b('◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
       b('⤴', 'touch.tiltUp', () => cam.rotate(0, 0.18)),
@@ -154,6 +155,16 @@ export class UI {
     this._eventOpen = true;
   }
 
+  /** Выпадающее меню под кнопкой: прижато к левому или правому краю кнопки, но не выходит за экран. */
+  private _placeMenu(m: HTMLElement, r: DOMRect): void {
+    m.style.top = `${r.bottom + 6}px`;
+    m.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - 16)}px`;
+    m.style.left = 'auto';
+    m.style.right = 'auto';
+    if (r.left + r.width / 2 < window.innerWidth / 2) m.style.left = `${Math.max(8, r.left)}px`;
+    else m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+  }
+
   private _toggleAdvisor(btn: HTMLElement): void {
     const m = this._advMenu;
     if (m.style.display !== 'none') {
@@ -163,8 +174,7 @@ export class UI {
     this._game.get('advisor').refresh();
     const r = btn.getBoundingClientRect();
     m.style.display = 'flex';
-    m.style.top = `${r.bottom + 6}px`;
-    m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    this._placeMenu(m, r);
     m.replaceChildren(
       h('div', { class: 'panel-head' }, h('span', { text: `🔔 ${t('hud.advisor')}` })),
       ...advisorList(this._game, (x, z) => this._renderer.camera.focus(x, z), () => (m.style.display = 'none')),
@@ -260,8 +270,7 @@ export class UI {
     }
     const r = btn.getBoundingClientRect();
     m.style.display = 'flex';
-    m.style.top = `${r.bottom + 6}px`;
-    m.style.right = `${window.innerWidth - r.right}px`;
+    this._placeMenu(m, r);
     m.replaceChildren(
       h('button', { class: 'btn wide', text: `✖ ${t('maps.off')}`, onclick: () => { this._game.bus.emit('overlay:set', null); m.style.display = 'none'; } }),
       ...this._game.overlays.all().map((o) => h('button', { class: 'btn wide', text: `${o.icon} ${t(`overlay.${o.id}.name`)}`, onclick: () => { this._game.bus.emit('overlay:set', o.id); m.style.display = 'none'; } })),

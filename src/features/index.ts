@@ -25,6 +25,8 @@ import { ProgressSystem } from '../sim/ProgressSystem';
 import { ObjectiveSystem } from '../sim/ObjectiveSystem';
 import { EventSystem } from '../sim/EventSystem';
 import { AdvisorSystem } from '../sim/AdvisorSystem';
+import { ConstructionSystem } from '../sim/ConstructionSystem';
+import { DiseaseSystem } from '../sim/DiseaseSystem';
 import { FleetSystem } from '../sim/FleetSystem';
 import { SanitationSystem } from '../sim/SanitationSystem';
 import { registerOverlays } from './overlays';
@@ -48,6 +50,7 @@ export const coreFeature: Feature = {
     g.addSystem(new EventSystem());
     g.addSystem(new AdvisorSystem());
     g.addSystem(new NetworkSystem());
+    g.addSystem(new ConstructionSystem());
     g.addSystem(new UtilitySystem());
     g.addSystem(new MapsSystem());
     g.addSystem(new StatsSystem());
@@ -56,6 +59,7 @@ export const coreFeature: Feature = {
     g.addSystem(new EconomySystem());
     g.addSystem(new SanitationSystem());
     g.addSystem(new CrimeSystem());
+    g.addSystem(new DiseaseSystem());
     g.addSystem(new PedestrianSystem());
     g.addSystem(new SaveSystem());
     registerOverlays(g);

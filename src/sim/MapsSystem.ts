@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import { effectiveDef } from '../data/services';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
@@ -85,7 +86,7 @@ export class MapsSystem implements System {
     const funding = g.get('economy').funding;
     const sources: MapSource[] = [];
     for (const b of g.world.list()) {
-      if (b.abandoned) continue;
+      if (isIdle(b)) continue;
       if (b.kind === 'service') {
         const d = effectiveDef(g.services.require(b.defId), b.up);
         const working = b.powered || d.powerNeed === 0;

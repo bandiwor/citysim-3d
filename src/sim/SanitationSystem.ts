@@ -1,3 +1,4 @@
+import { isIdle } from '../core/types';
 import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
@@ -55,10 +56,11 @@ export class SanitationSystem implements System {
     const dc = g.config.death;
     const maps = g.get('maps');
     for (const b of g.world.list()) {
-      if (b.abandoned) continue;
+      if (isIdle(b)) continue;
       const housing = b.kind === 'zone' && g.zoneTypes.require(b.zone).housing;
       const rate = (housing ? b.pop * gc.perResident : (b.kind === 'zone' ? b.workers : b.jobs * 0.5) * gc.perJob) * g.get('mods').mul('garbage');
       b.garbage = Math.min(gc.cap * 1.25, b.garbage + rate * dt);
+      b.deadFor = b.dead > 0 ? b.deadFor + dt : 0;
       if (!housing || b.pop < 1) continue;
       const health = maps.sample('health', b.x, b.z);
       const per = b.pop * dc.rate * (1 - health * dc.healthEffect) * (b.dead > 0 ? dc.unburiedBoost : 1) * g.get('mods').mul('death');
@@ -76,7 +78,7 @@ export class SanitationSystem implements System {
   private _process(dt: number): void {
     const g = this._game;
     for (const b of g.world.list()) {
-      if (b.kind !== 'service' || b.abandoned) continue;
+      if (b.kind !== 'service' || isIdle(b)) continue;
       const d = effectiveDef(g.services.require(b.defId), b.up);
       const working = b.powered || d.powerNeed === 0;
       if (!working) continue;

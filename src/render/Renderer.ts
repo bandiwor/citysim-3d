@@ -16,6 +16,7 @@ import { clamp, smoothstep } from '../core/Rng';
 import { AnimatedBuildingsView } from './animations';
 import { AlertView } from './AlertView';
 import { BuildingView } from './BuildingView';
+import { ConstructionView } from './ConstructionView';
 import { CameraController } from './CameraController';
 import { PedestrianView } from './PedestrianView';
 import { PreviewView } from './PreviewView';
@@ -88,6 +89,7 @@ export class Renderer {
       new OverlayView(this.scene, _game),
       this.buildings,
       new AnimatedBuildingsView(this.scene, _game),
+      new ConstructionView(this.scene, _game),
       new TreeView(this.scene, _game),
       new TrafficLightView(this.scene, _game),
       new VehicleView(this.scene, _game),

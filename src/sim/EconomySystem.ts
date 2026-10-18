@@ -1,3 +1,4 @@
+import { isBuilding, isIdle } from '../core/types';
 import { effectiveDef } from '../data/services';
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
@@ -99,7 +100,7 @@ export class EconomySystem implements System {
 
     for (const b of g.world.list()) {
       if (b.kind === 'zone') {
-        if (b.abandoned || !b.powered || !b.watered) continue;
+        if (isIdle(b) || !b.powered || !b.watered) continue;
         const z = g.zoneTypes.require(b.zone);
         const units = z.housing ? b.pop : b.workers;
         const rate = (this.taxes[z.id] ?? c.defaultTax) / 100;
@@ -107,6 +108,7 @@ export class EconomySystem implements System {
         if (z.id === 'com') v *= c.goodsBase + c.goodsK * b.goods;
         income[z.id as 'res' | 'com' | 'ind'] = (income[z.id as 'res' | 'com' | 'ind'] ?? 0) + v * incomeMul;
       } else {
+        if (isBuilding(b)) continue;
         if (b.defId === 'townhall' && !b.abandoned) townhalls++;
         const d = effectiveDef(g.services.require(b.defId), b.up);
         expense.services += d.upkeep * (this.funding[d.fundingGroup] ?? 1);

@@ -1,6 +1,6 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, SphereGeometry, type Scene } from 'three';
 import type { Game } from '../core/Game';
-import type { Building } from '../core/types';
+import { isBuilding, type Building } from '../core/types';
 import { installedUpgrades } from '../data/services';
 import type { View } from './View';
 
@@ -189,7 +189,7 @@ export class AnimatedBuildingsView implements View {
   }
 
   private _add(b: Building): void {
-    if (b.kind !== 'service' || b.abandoned) return;
+    if (b.kind !== 'service' || b.abandoned || isBuilding(b)) return;
     const make = animations.get(this._game.services.require(b.defId).model);
     if (!make) return;
     const parts = make(b, this._game);
@@ -209,15 +209,15 @@ export class AnimatedBuildingsView implements View {
   }
 
   update(realDt: number, simDt: number): void {
-    this._t += realDt;
+    // анимации идут по игровому времени: на паузе дым, мигалки и лопасти замирают
+    this._t += simDt;
     const w = this._game.world;
     for (const [id, e] of this._groups) {
       const b = w.buildings.get(id);
       // без электричества здания не работают: мигалки и дым гаснут, ветряк крутится всегда
       const powered = !b || b.powered || this._game.services.require(b.defId).powerNeed === 0;
       e.g.visible = true;
-      for (const p of e.parts) p.tick(this._t, powered ? realDt : 0);
-      void simDt;
+      for (const p of e.parts) p.tick(this._t, powered ? simDt : 0);
     }
   }
 }

@@ -1,7 +1,7 @@
 import type { Game } from '../core/Game';
 import type { System } from '../core/System';
 import { clamp } from '../core/Rng';
-import type { Building } from '../core/types';
+import { isBuilding, type Building } from '../core/types';
 
 declare module '../core/Game' {
   interface SystemMap {
@@ -62,8 +62,14 @@ export class GrowthSystem implements System {
     // невывезенный мусор, тела и ограбления портят настроение
     const gc = g.config.garbage;
     if (b.garbage > gc.cap * gc.unhappyAt) v += gc.unhappy;
-    if (b.dead > 0) v += g.config.death.unhappy * Math.min(1, b.dead / 3);
+    const dc = g.config.death;
+    if (b.dead > 0 && b.deadFor > dc.unhappyAfter) v += dc.unhappy * Math.min(1, b.dead / 3);
+    // тела у соседей, которые долго не вывозят, тоже расстраивают
+    let neighbours = 0;
+    for (const n of g.world.buildingsNear(b.x, b.z, dc.neighborRadius)) if (n.id !== b.id && n.deadFor > dc.unhappyAfter) neighbours++;
+    v += dc.neighborUnhappy * Math.min(2, neighbours);
     if (b.incident > 0) v += g.config.crime.unhappy;
+    if (b.sick > 0 && b.pop > 0) v += g.config.disease.unhappy * Math.min(1, b.sick / b.pop);
     v += g.get('mods').add('happiness');
     return clamp(v, 0, 1);
   }
@@ -73,7 +79,6 @@ export class GrowthSystem implements System {
     const g = this._game;
     const c = g.config.growth;
     const demand = g.get('demand').values;
-    const util = g.get('utility');
     const net = g.get('network');
     const cells = g.world.zones.list();
     if (!cells.length) return;
@@ -85,12 +90,10 @@ export class GrowthSystem implements System {
         for (let tries = 0; tries < c.spawnTries; tries++) {
           const cell = cells[Math.floor(Math.random() * cells.length)];
           if (cell.zone !== z.index + 1 || cell.building || !cell.edge) continue;
-          const lv = z.levels[0];
           const comp = net.compOfEdge(cell.edge);
-          if (!util.hasSpare(comp, lv.capacity * z.powerPer, lv.capacity * z.waterPer)) continue;
+          // здания строятся и при нехватке энергии/воды — нехватка бьёт по счастью и налогам, а не блокирует рост
           const b = g.builder.spawnOnCell(cell, z.id);
           b.comp = comp;
-          util.reserve(comp, b.powerNeed, b.waterNeed);
           break;
         }
       }
@@ -102,11 +105,11 @@ export class GrowthSystem implements System {
     const g = this._game;
     const c = g.config.growth;
     const maps = g.get('maps');
-    const demand = g.get('demand').values;
+    const demand = g.get('demand').raw;
     const list = [...g.world.list()];
     for (const b of list) {
       b.happiness += (this.happinessOf(b) - b.happiness) * c.happinessSmoothing;
-      if (b.kind !== 'zone') continue;
+      if (b.kind !== 'zone' || isBuilding(b)) continue;
       const z = g.zoneTypes.require(b.zone);
       const lv = z.levels[b.level - 1];
       const ok = b.powered && b.watered && b.access > 0;
@@ -115,7 +118,7 @@ export class GrowthSystem implements System {
       else b.outage = Math.max(0, b.outage - dt * 2);
 
       if (!b.abandoned) {
-        if (b.outage > c.abandonAfterOutage || (b.happiness < c.abandonHappiness && Math.random() < c.abandonHappinessChance)) {
+        if (b.outage > c.abandonAfterOutage || (ok && b.happiness < c.abandonHappiness && Math.random() < c.abandonHappinessChance)) {
           b.abandoned = true;
           b.pop = 0;
           b.decay = 0;
@@ -146,12 +149,12 @@ export class GrowthSystem implements System {
         b.goods = clamp(b.goods - c.goodsDecay * dt * (c.goodsActivity + b.workers / Math.max(1, b.jobs)), 0, 1);
       }
 
-      if (!ok) continue;
+      if (!ok || b.con < 1) continue;
       const land = maps.sample('landValue', b.x, b.z);
       const edu = maps.sample('education', b.x, b.z);
       const next = z.levels[b.level];
       if (next && land >= next.reqLand && edu >= next.reqEdu && b.happiness > c.upgradeHappiness && (demand[z.id] ?? 0) > c.upgradeDemand && Math.random() < c.upgradeChance) {
-        g.builder.setLevel(b, b.level + 1);
+        g.builder.beginLevelUp(b, b.level + 1);
       } else if (b.level > 1 && (land < lv.reqLand - c.downgradeLandSlack || b.happiness < c.downgradeHappiness) && Math.random() < c.downgradeChance) {
         g.builder.setLevel(b, b.level - 1);
         b.pop = Math.min(b.pop, b.cap);

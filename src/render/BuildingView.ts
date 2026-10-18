@@ -1,6 +1,6 @@
 import { Color, type BufferGeometry, Matrix4, Quaternion, Vector3, type Scene } from 'three';
 import type { Game } from '../core/Game';
-import type { Building } from '../core/types';
+import { isBuilding, type Building } from '../core/types';
 import './serviceExtras';
 import { installedUpgrades } from '../data/services';
 import { BuildingMaterials } from './Materials';
@@ -40,8 +40,10 @@ export class BuildingView implements View {
     _game.bus.on('building:added', (b) => this._add(b, true));
     _game.bus.on('building:removed', (b) => this._remove(b));
     _game.bus.on('building:updated', (b) => {
+      // достроенное здание «вырастает»: анимируем, если до этого модели не было
+      const had = this._slots.has(b.id);
       this._remove(b);
-      this._add(b, false);
+      this._add(b, !had);
     });
     for (const b of _game.world.list()) this._add(b, false);
   }
@@ -71,6 +73,7 @@ export class BuildingView implements View {
   }
 
   private _add(b: Building, animate: boolean): void {
+    if (isBuilding(b)) return;
     const pool = this._poolFor(b);
     const slot: Slot = { pool, grow: animate ? 0 : 1, color: this._tint(b) };
     this._slots.set(b.id, slot);

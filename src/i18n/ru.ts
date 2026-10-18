@@ -646,6 +646,20 @@ export const ru: Record<keyof typeof en, string> = {
   'touch.brushBigger': 'Кисть больше',
   'touch.tiltUp': 'Наклон камеры вверх',
   'touch.tiltDown': 'Наклон камеры вниз',
+  'err.upgrade.busy': 'Идёт строительство',
+  'inspector.construction': 'Строится',
+  'msg.outbreak': 'В одном из домов началась вспышка болезни!',
+  'msg.fireSpread': 'Огонь перекидывается на соседнее здание!',
+  'inspector.sick': 'Больные',
+  'advisor.epidemic': 'Домов со вспышкой болезни: {n} — постройте поликлинику или больницу',
+  'fx.disease': 'Заражение',
+  'opt.roadSnap': 'Привязка',
+  'opt.roadSnap.smart': 'Умная',
+  'opt.roadSnap.free': 'Выкл',
+  'opt.roadSnap.grid': 'Сетка',
+  'opt.roadSnap.ortho': '90°',
+  'hint.autoDemolish': 'будет снесено зданий из зон: {n}',
+  'touch.snap': 'Режим привязки (V)',
   'help.html': `
     <h4>Как играть</h4>
     <ol>
