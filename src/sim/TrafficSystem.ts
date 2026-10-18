@@ -53,6 +53,8 @@ export interface Vehicle {
   /** подход (ребро:направление) и признак левого поворота */
   ja?: string;
   jl?: boolean;
+  /** куда выезжает с перекрёстка (ребро:направление) */
+  jx?: string;
   /** сколько секунд ждёт разрешения въехать на перекрёсток */
   jwait: number;
   /** замедление в повороте 0..1 */
@@ -480,16 +482,31 @@ export class TrafficSystem implements System {
         const t1 = graph.pointAt(ne, nx.dir > 0 ? 0 : ne.len);
         left = (t0.tx * step.dir) * (t1.tz * nx.dir) - (t0.tz * step.dir) * (t1.tx * nx.dir) < -0.5;
       }
+      const exit = `${nx.edge}:${nx.dir}`;
       const here = occ.get(nodeId);
-      let ok = !here || here.every((o) => o.jg === group && (o.ja === approach || (!o.jl && !left)));
+      let ok = !here || here.every((o) => o.jg === group && (o.ja === approach || (!o.jl && !left && o.jx !== exit)));
       const starve = starving.get(nodeId);
       if (ok && starve && starve !== group && v.jwait < rc.junctionStarve) ok = false;
-      if (!ok && v.jwait > rc.junctionPatience) ok = true;
+      // не въезжаем на перекрёсток, если за ним нет места: иначе встанем посреди и заблокируем остальных
+      if (ok) {
+        const tail = lanes.get(exit);
+        if (tail) {
+          let rear = Infinity;
+          for (const t of tail) rear = Math.min(rear, t.p);
+          if (rear < this._gap(v.kind, v.kind) + 3) ok = false;
+        }
+      }
+      // совсем зависшая в очереди машина исчезает (вместо проезда сквозь другие)
+      if (!ok && v.jwait > rc.junctionPatience) {
+        this.kill(v);
+        continue;
+      }
       if (ok) {
         v.jn = nodeId;
         v.jg = group;
         v.ja = approach;
         v.jl = left;
+        v.jx = exit;
         v.jwait = 0;
         const list = occ.get(nodeId);
         if (list) list.push(v);
@@ -588,6 +605,7 @@ export class TrafficSystem implements System {
     const step = v.steps[v.i];
     const e = graph.edges.get(step.edge);
     if (!e) return;
+    v.p = step.dir > 0 ? v.s : e.len - v.s;
     const R = this._game.config.roads.turnRadius;
     let pos = this._lane(e, step.dir, v.s);
     let slow = 1;

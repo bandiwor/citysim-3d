@@ -105,7 +105,7 @@ export const defaultConfig = {
     junctionMargin: 3,
     junctionReserve: 10,
     /** сколько секунд ждать своей очереди, прежде чем въехать (против взаимной блокировки), и когда ждущий начинает блокировать новых */
-    junctionPatience: 14,
+    junctionPatience: 40,
     junctionStarve: 3,
     /** радиус плавного поворота, ед. */
     turnRadius: 9,
