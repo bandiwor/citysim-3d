@@ -37,8 +37,10 @@ export default defineConfig(({ mode }) => ({
     minify: 'terser',
     sourcemap: false,
     chunkSizeWarningLimit: 900,
+    // SINGLE_FILE=1: один JS без чанков (для встраивания в одну HTML-страницу)
+    outDir: process.env.SINGLE_FILE ? 'dist-single' : 'dist',
     // Библиотеки (three.js) — отдельный чанк; точка входа крошечная и подгружает игру асинхронно (экран загрузки в index.html).
-    rollupOptions: { output: { manualChunks: (id: string) => (id.includes('node_modules') ? 'vendor' : undefined) } },
+    rollupOptions: { output: process.env.SINGLE_FILE ? { inlineDynamicImports: true } : { manualChunks: (id: string) => (id.includes('node_modules') ? 'vendor' : undefined) } },
     terserOptions: {
       ecma: 2022,
       toplevel: true,
