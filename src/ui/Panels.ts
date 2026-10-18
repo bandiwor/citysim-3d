@@ -1,9 +1,7 @@
 import type { Game } from '../core/Game';
 import { isIdle, type Building } from '../core/types';
-import type { AudioEngine, AudioChannel } from '../audio/AudioEngine';
 import { effectiveDef, FUNDING_GROUPS } from '../data/services';
-import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, getLocale, LOCALES, t, type Locale } from '../i18n';
-import type { Renderer } from '../render/Renderer';
+import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, t } from '../i18n';
 import { h } from './dom';
 
 function bar(v: number, good = true): HTMLElement {
@@ -216,6 +214,12 @@ export class Inspector {
       if (z.housing) row(t('inspector.employed'), fmtPercent(1 - g.get('stats').unemployment));
       if (z.id === 'com') row(t('inspector.goods'), fmtPercent(b.goods));
       row(t('inspector.happiness'), bar(b.happiness));
+      const why = g.get('diag').buildingWhy(b);
+      if (why) row(t('inspector.why'), h('span', { class: 'v warn', text: `⚠ ${t(why)}` }));
+      const factors = g.get('diag').buildingFactors(b).slice(0, 3);
+      if (factors.length && !b.abandoned) {
+        rows.push(h('div', { class: 'why-box' }, h('div', { class: 'dim small', text: t('inspector.happinessWhy') }), ...factors.map((f) => h('div', { class: 'why-row', title: t(`diag.hap.${f.key}.fix`) }, h('span', { text: t(`diag.hap.${f.key}`, { pct: Math.round(f.gap * 100) }) })))));
+      }
       row(t('inspector.landValue'), bar(maps.sample('landValue', b.x, b.z)));
       row(t('inspector.pollution'), bar(maps.sample('pollution', b.x, b.z), false));
     } else {
@@ -287,7 +291,7 @@ export class Modal {
   }
 }
 
-const slider = (label: string, min: number, max: number, val: number, unit: string, on: (v: number) => void, after?: () => void): HTMLElement => {
+export const slider = (label: string, min: number, max: number, val: number, unit: string, on: (v: number) => void, after?: () => void): HTMLElement => {
   const out = h('span', { class: 'sv', text: `${val}${unit}` });
   const input = h('input', {
     type: 'range',
@@ -303,12 +307,13 @@ const slider = (label: string, min: number, max: number, val: number, unit: stri
   return h('label', { class: 'slider' }, h('span', { class: 'sl', text: label }), input, out);
 };
 
-export function budgetBody(game: Game): { el: HTMLElement; tick(): void } {
+export function budgetBody(game: Game, onDiagnose?: () => void): { el: HTMLElement; tick(): void } {
   const eco = game.get('economy');
   const c = game.config.economy;
   const table = h('div', { class: 'table' });
   const sliders = h('div', { class: 'sliders' });
   const loan = h('div', { class: 'loan' });
+  const warn = h('div', { class: 'budget-warn' });
   sliders.append(h('h4', { text: t('budget.taxes') }));
   for (const z of game.zoneTypes.all()) sliders.append(slider(`${z.icon} ${t(`zone.${z.id}.name`)}`, 0, c.maxTax, eco.taxes[z.id] ?? c.defaultTax, '%', (v) => eco.setTax(z.id, v), () => tick()));
   sliders.append(h('h4', { text: t('budget.funding') }));
@@ -317,6 +322,12 @@ export function budgetBody(game: Game): { el: HTMLElement; tick(): void } {
   const line = (k: string, v: number, cls = ''): HTMLElement => h('div', { class: `trow ${cls}` }, h('span', { text: k }), h('span', { text: fmtSigned(v) }));
   function tick(): void {
     const b = eco.computeBudget();
+    warn.replaceChildren();
+    warn.style.display = b.net < 0 || eco.money < 0 ? 'flex' : 'none';
+    if (b.net < 0 || eco.money < 0) {
+      warn.append(h('span', { text: `📉 ${t('budget.deficitWarn', { n: fmtMoney(Math.abs(b.net)) })}` }));
+      if (onDiagnose) warn.append(h('button', { class: 'btn sm', text: `🔍 ${t('budget.why')}`, onclick: onDiagnose }));
+    }
     table.replaceChildren(
       h('h4', { text: t('budget.forecast') }),
       line(t('budget.taxRes'), b.income.res),
@@ -332,12 +343,12 @@ export function budgetBody(game: Game): { el: HTMLElement; tick(): void } {
       line(t('budget.total'), b.net, b.net < 0 ? 'neg total' : 'pos total'),
     );
     loan.replaceChildren(
-      h('div', { text: t('budget.cash', { cash: fmtMoney(eco.money), debt: fmtMoney(eco.debt) }) }),
+      h('div', { text: t('budget.cash', { cash: fmtMoney(eco.money), debt: fmtMoney(eco.debt) }) + ` · ${t('budget.creditLimit', { n: fmtMoney(eco.creditLimit) })}` }),
       h('div', { class: 'row-btns' }, h('button', { class: 'btn', text: t('budget.takeLoan', { n: fmtNumber(c.loanStep) }), onclick: () => { eco.takeLoan(); tick(); } }), h('button', { class: 'btn', text: t('budget.repay', { n: fmtNumber(c.loanStep) }), onclick: () => { eco.repayLoan(); tick(); } })),
     );
   }
   tick();
-  return { el: h('div', { class: 'budget' }, h('div', { class: 'cols' }, sliders, h('div', {}, table, loan))), tick };
+  return { el: h('div', { class: 'budget' }, warn, h('div', { class: 'cols' }, sliders, h('div', {}, table, loan))), tick };
 }
 
 export function statsBody(game: Game): { el: HTMLElement; tick(): void } {
@@ -407,44 +418,3 @@ export function helpBody(): HTMLElement {
   return h('div', { class: 'help', html: t('help.html') });
 }
 
-export interface SettingsDeps {
-  game: Game;
-  renderer: Renderer;
-  audio: AudioEngine;
-  onLocale?: (l: Locale) => void;
-}
-
-/** Окно настроек: язык, графика, геймплей, громкость. */
-export function settingsBody(d: SettingsDeps): HTMLElement {
-  const toggle = (label: string, get: () => boolean, set: (v: boolean) => void): HTMLElement => {
-    const b = h('button', { class: 'btn wide' });
-    const upd = (): void => {
-      b.textContent = `${label}: ${get() ? t('settings.on') : t('settings.off')}`;
-    };
-    b.addEventListener('click', () => {
-      set(!get());
-      upd();
-    });
-    upd();
-    return b;
-  };
-  const lang = h('select', { class: 'select', onchange: (e) => d.onLocale?.((e.target as HTMLSelectElement).value as Locale) });
-  for (const l of LOCALES) lang.append(h('option', { value: l.id, text: l.label, ...(getLocale() === l.id ? { selected: 'selected' } : {}) }));
-  lang.value = getLocale();
-  const vol = (ch: AudioChannel): HTMLElement => slider(t(`settings.vol.${ch}`), 0, 100, Math.round(d.audio.volume(ch) * 100), '%', (v) => d.audio.setVolume(ch, v / 100));
-  return h(
-    'div',
-    { class: 'menu settings' },
-    h('label', { class: 'slider' }, h('span', { class: 'sl', text: t('settings.language') }), lang, h('span')),
-    h('h4', { text: t('settings.audio') }),
-    vol('master'),
-    vol('ambient'),
-    vol('sfx'),
-    vol('music'),
-    h('h4', { text: t('settings.graphics') }),
-    toggle(t('settings.shadows'), () => d.renderer.shadows, (v) => d.renderer.setShadows(v)),
-    toggle(t('settings.dayNight'), () => d.renderer.dayNight, (v) => (d.renderer.dayNight = v)),
-    h('h4', { text: t('settings.gameplay') }),
-    toggle(t('settings.fires'), () => d.game.get('disaster').enabled, (v) => (d.game.get('disaster').enabled = v)),
-  );
-}

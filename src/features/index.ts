@@ -27,6 +27,7 @@ import { EventSystem } from '../sim/EventSystem';
 import { AdvisorSystem } from '../sim/AdvisorSystem';
 import { ConstructionSystem } from '../sim/ConstructionSystem';
 import { DiseaseSystem } from '../sim/DiseaseSystem';
+import { DiagnosticsSystem } from '../sim/DiagnosticsSystem';
 import { PropSystem } from '../sim/PropSystem';
 import { NatureTool } from '../tools/NatureTools';
 import { TaxiSystem } from '../sim/TaxiSystem';
@@ -64,6 +65,7 @@ export const coreFeature: Feature = {
     g.addSystem(new CrimeSystem());
     g.addSystem(new DiseaseSystem());
     g.addSystem(new PedestrianSystem());
+    g.addSystem(new DiagnosticsSystem());
     g.addSystem(new SaveSystem());
     registerOverlays(g);
     g.addCategory({ id: 'tools', icon: '🧰' });

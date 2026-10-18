@@ -37,43 +37,51 @@ export class GrowthSystem implements System {
     }
   }
 
-  /** Счастье здания 0..1 по службам, загрязнению, налогам, безработице и т.д. */
-  happinessOf(b: Building): number {
+  /** Слагаемые счастья здания: [ключ, вклад]. Сумма даёт счастье до ограничения 0..1. */
+  happinessFactors(b: Building): [string, number][] {
     const g = this._game;
     const h = g.config.happiness;
     const maps = g.get('maps');
     const st = g.get('stats');
     const rate = g.get('economy').taxes[b.zone] ?? h.taxFree;
     const at = (t: string): number => maps.sample(t, b.x, b.z);
-    let v =
-      h.base +
-      h.police * at('police') +
-      h.fire * at('fire') +
-      h.health * at('health') +
-      h.park * at('park') +
-      h.education * at('education') +
-      h.transit * g.get('transit').share(b.x, b.z) +
-      h.pollution * at('pollution') +
-      h.noise * at('noise') -
-      Math.max(0, rate - h.taxFree) * h.taxPenalty +
-      (b.powered ? h.powerOn : h.powerOff) +
-      (b.watered ? h.waterOn : h.waterOff);
+    const f: [string, number][] = [
+      ['base', h.base],
+      ['police', h.police * at('police')],
+      ['fire', h.fire * at('fire')],
+      ['health', h.health * at('health')],
+      ['park', h.park * at('park')],
+      ['education', h.education * at('education')],
+      ['transit', h.transit * g.get('transit').share(b.x, b.z)],
+      ['pollution', h.pollution * at('pollution')],
+      ['noise', h.noise * at('noise')],
+      ['tax', -Math.max(0, rate - h.taxFree) * h.taxPenalty],
+      ['power', b.powered ? h.powerOn : h.powerOff],
+      ['water', b.watered ? h.waterOn : h.waterOff],
+    ];
     if (g.zoneTypes.get(b.zone)?.housing) {
-      v += h.unemployment * st.unemployment * Math.min(1, st.population / h.unemploymentPop);
-      v += g.config.education.overqualified * st.overqualified * Math.min(1, st.population / h.unemploymentPop);
+      const scale = Math.min(1, st.population / h.unemploymentPop);
+      f.push(['unemployment', h.unemployment * st.unemployment * scale], ['overqualified', g.config.education.overqualified * st.overqualified * scale]);
     }
     // невывезенный мусор, тела и ограбления портят настроение
     const gc = g.config.garbage;
-    if (b.garbage > gc.cap * gc.unhappyAt) v += gc.unhappy;
+    f.push(['garbage', b.garbage > gc.cap * gc.unhappyAt ? gc.unhappy : 0]);
     const dc = g.config.death;
-    if (b.dead > 0 && b.deadFor > dc.unhappyAfter) v += dc.unhappy * Math.min(1, b.dead / 3);
+    f.push(['bodies', b.dead > 0 && b.deadFor > dc.unhappyAfter ? dc.unhappy * Math.min(1, b.dead / 3) : 0]);
     // тела у соседей, которые долго не вывозят, тоже расстраивают
     let neighbours = 0;
     for (const n of g.world.buildingsNear(b.x, b.z, dc.neighborRadius)) if (n.id !== b.id && n.deadFor > dc.unhappyAfter) neighbours++;
-    v += dc.neighborUnhappy * Math.min(2, neighbours);
-    if (b.incident > 0) v += g.config.crime.unhappy;
-    if (b.sick > 0 && b.pop > 0) v += g.config.disease.unhappy * Math.min(1, b.sick / b.pop);
-    v += g.get('mods').add('happiness');
+    f.push(['neighborBodies', dc.neighborUnhappy * Math.min(2, neighbours)]);
+    f.push(['robbery', b.incident > 0 ? g.config.crime.unhappy : 0]);
+    f.push(['disease', b.sick > 0 && b.pop > 0 ? g.config.disease.unhappy * Math.min(1, b.sick / b.pop) : 0]);
+    f.push(['events', g.get('mods').add('happiness')]);
+    return f;
+  }
+
+  /** Счастье здания 0..1 по службам, загрязнению, налогам, безработице и т.д. */
+  happinessOf(b: Building): number {
+    let v = 0;
+    for (const [, x] of this.happinessFactors(b)) v += x;
     return clamp(v, 0, 1);
   }
 

@@ -13,6 +13,11 @@ import type { Game } from '../core/Game';
 import { Noise } from '../world/Noise';
 import { CELL, type World } from '../world/World';
 
+const smoothstep01 = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
 /** Рельеф с раскраской по высоте, вода и дальний фон. Перерисовывается после терраформинга. */
 export class TerrainView {
   readonly mesh: Mesh;
@@ -20,6 +25,7 @@ export class TerrainView {
   private _pos: Float32Array;
   private _col: Float32Array;
   private _noise: Float32Array;
+  private _patch: Float32Array;
   private _geo: BufferGeometry;
   private _dirty = false;
 
@@ -31,7 +37,15 @@ export class TerrainView {
     this._pos = new Float32Array((n + 1) * (n + 1) * 3);
     this._col = new Float32Array((n + 1) * (n + 1) * 3);
     this._noise = new Float32Array((n + 1) * (n + 1));
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) this._noise[j * (n + 1) + i] = noise.fbm(i * 0.35, j * 0.35, 2);
+    this._patch = new Float32Array((n + 1) * (n + 1));
+    const patch = new Noise(world.seed + 41);
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        this._noise[j * (n + 1) + i] = noise.fbm(i * 0.35, j * 0.35, 2);
+        // крупные пятна: сочный луг / сухая трава / цветущий луг
+        this._patch[j * (n + 1) + i] = patch.fbm(i * 0.045, j * 0.045, 3);
+      }
+    }
     this._fill();
     const idx = new Uint32Array(n * n * 6);
     let p = 0;
@@ -80,27 +94,59 @@ export class TerrainView {
     const n = world.size;
     const WATER_LEVEL = world.cfg.world.waterLevel;
     const c = new Color();
-    const rock = new Color(0.45, 0.42, 0.34);
-    const snow = new Color(0.55, 0.53, 0.5);
+    const lush = new Color(0.3, 0.58, 0.25);
+    const meadow = new Color(0.5, 0.7, 0.3);
+    const dry = new Color(0.66, 0.64, 0.34);
+    const rock = new Color(0.46, 0.43, 0.36);
+    const dark = new Color(0.36, 0.33, 0.3);
+    const snow = new Color(0.94, 0.96, 0.98);
+    const sand = new Color(0.8, 0.74, 0.52);
+    const wet = new Color(0.55, 0.5, 0.36);
+    const hAt = (i: number, j: number): number => world.heights[Math.min(n, Math.max(0, j)) * (n + 1) + Math.min(n, Math.max(0, i))];
     for (let j = 0; j <= n; j++) {
       for (let i = 0; i <= n; i++) {
         const k = j * (n + 1) + i;
         const h = world.heights[k];
         const v = this._noise[k];
+        const pch = this._patch[k];
         this._pos[k * 3] = i * CELL;
         this._pos[k * 3 + 1] = h;
         this._pos[k * 3 + 2] = j * CELL;
-        if (h < WATER_LEVEL - 0.6) c.setRGB(0.42, 0.38, 0.28);
-        else if (h < -0.3) c.setRGB(0.76, 0.7, 0.5);
-        else if (h <= 0.05) c.setRGB(0.36 + v * 0.1, 0.62 + v * 0.14, 0.3 + v * 0.08);
-        else if (h < 9) c.setRGB(0.3 + v * 0.1, 0.52 + v * 0.1, 0.26).lerp(rock, Math.min(1, h / 12));
-        else if (h < 24) c.setRGB(0.46 + v * 0.08, 0.43 + v * 0.08, 0.38 + v * 0.06);
-        else c.setRGB(0.92, 0.94, 0.96).lerp(snow, Math.max(0, 1 - (h - 24) / 8));
+        const slope = Math.max(Math.abs(hAt(i + 1, j) - hAt(i - 1, j)), Math.abs(hAt(i, j + 1) - hAt(i, j - 1))) * 0.5;
+        if (h < WATER_LEVEL - 0.6) c.copy(wet);
+        else if (h < -0.3) c.copy(sand).lerp(wet, 0.35);
+        else {
+          // трава: пятна сочного, обычного и сухого луга
+          c.copy(meadow).lerp(lush, smoothstep01(-0.05, 0.2, pch)).lerp(dry, smoothstep01(0.05, 0.3, -pch) * 0.8);
+          c.r += v * 0.07;
+          c.g += v * 0.1;
+          c.b += v * 0.05;
+          // песчаный берег
+          if (h < 0.35 && this._nearWater(i, j)) c.lerp(sand, 0.75);
+          // предгорья и скалы по высоте и крутизне
+          const alt = smoothstep01(5, 20, h);
+          c.lerp(rock, Math.max(alt * 0.85, Math.min(1, slope / 5) * 0.75));
+          c.lerp(dark, smoothstep01(16, 34, h) * 0.5 * (0.6 + v));
+          c.lerp(snow, smoothstep01(34, 44, h + v * 4));
+        }
         this._col[k * 3] = c.r;
         this._col[k * 3 + 1] = c.g;
         this._col[k * 3 + 2] = c.b;
       }
     }
+  }
+
+  /** Есть ли вода в соседних клетках (для песчаного берега). */
+  private _nearWater(i: number, j: number): boolean {
+    const w = this._world;
+    for (let dy = -1; dy <= 0; dy++) {
+      for (let dx = -1; dx <= 0; dx++) {
+        const x = i + dx;
+        const y = j + dy;
+        if (x >= 0 && y >= 0 && x < w.size && y < w.size && w.terrain[y * w.size + x] === 1) return true;
+      }
+    }
+    return false;
   }
 
   update(): void {

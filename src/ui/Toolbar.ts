@@ -13,6 +13,7 @@ export class Toolbar {
   private _catBtns = new Map<string, HTMLElement>();
   private _itemBtns = new Map<string, HTMLElement>();
   private _offs: (() => void)[] = [];
+  private _tip = h('div', { class: 'tb-tip', style: 'display:none' });
 
   constructor(private _game: Game, private _getTool: () => Tool | null) {
     for (const c of _game.categories) {
@@ -29,7 +30,7 @@ export class Toolbar {
         e.stopPropagation();
       }, { passive: false });
     }
-    this.el = h('div', { class: 'toolbar' }, this._options, this._items, this._cats);
+    this.el = h('div', { class: 'toolbar' }, this._tip, this._options, this._items, this._cats);
     this._offs.push(
       _game.bus.on('tool:set', (id) => this._highlight(id)),
       _game.bus.on('economy:changed', () => this._affordable()),
@@ -67,12 +68,48 @@ export class Toolbar {
         it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
         h('span', { class: 'lock', text: '' }),
       );
+      b.addEventListener('pointerenter', (e) => { if ((e as PointerEvent).pointerType !== 'touch') this._showTip(it.id, b); });
+      b.addEventListener('pointerleave', () => (this._tip.style.display = 'none'));
       this._itemBtns.set(it.id, b);
       this._items.append(b);
       this._lockState(it.id, b);
     }
     this._affordable();
     this._markActive(this._getTool()?.id ?? '');
+  }
+
+  /** Подсказка над панелью: название, описание, цена и характеристики здания. */
+  private _showTip(id: string, anchor: HTMLElement): void {
+    const g = this._game;
+    const it = g.toolbar.get(id);
+    if (!it) return;
+    const rows: [string, string][] = [];
+    const m = /^service:(.+)$/.exec(id);
+    const def = m ? g.services.get(m[1]) : undefined;
+    if (it.cost) rows.push([t('tip.cost'), `${t('unit.money')}${fmtNumber(it.cost)}`]);
+    if (def) {
+      rows.push([t('tip.size'), `${def.size[0]}×${def.size[1]}`]);
+      rows.push([t('tip.upkeep'), `${t('unit.money')}${fmtNumber(def.upkeep)}${t('unit.perMonth')}`]);
+      if (def.jobs) rows.push([t('tip.jobs'), fmtNumber(def.jobs)]);
+      if (def.provides?.power) rows.push([t('tip.power'), `+${fmtNumber(def.provides.power)}`]);
+      if (def.provides?.water) rows.push([t('tip.water'), `+${fmtNumber(def.provides.water)}`]);
+      if (def.powerNeed) rows.push([t('tip.needPower'), fmtNumber(def.powerNeed)]);
+      if (def.waterNeed) rows.push([t('tip.needWater'), fmtNumber(def.waterNeed)]);
+      if (def.coverage) rows.push([t('tip.radius'), `${def.coverage.radius} ${t('unit.cells')}`]);
+      if (def.pollution) rows.push([t('tip.pollution'), `${Math.round(def.pollution.strength * 100)}%`]);
+      if (def.upgrades?.length) rows.push([t('tip.upgrades'), String(def.upgrades.length)]);
+    }
+    const r = anchor.getBoundingClientRect();
+    const host = this.el.getBoundingClientRect();
+    const parts: HTMLElement[] = [h('div', { class: 'tip-h' }, h('span', { class: 'tip-ic', text: it.icon }), h('b', { text: t(it.nameKey) }))];
+    if (it.descKey) parts.push(h('div', { class: 'tip-d', text: t(it.descKey) }));
+    for (const [k, v] of rows) parts.push(h('div', { class: 'tip-r' }, h('span', { text: k }), h('span', { text: v })));
+    if (it.hotkey && it.hotkey !== 'Escape') parts.push(h('div', { class: 'tip-d dim', text: `${t('tip.hotkey')}: ${it.hotkey.replace(/^Key/, '')}` }));
+    this._tip.replaceChildren(...parts);
+    this._tip.style.display = 'block';
+    const w = this._tip.offsetWidth;
+    const left = Math.min(Math.max(4, r.left + r.width / 2 - host.left - w / 2), Math.max(4, host.width - w - 4));
+    this._tip.style.left = `${left}px`;
   }
 
   /** Замок на кнопке: показывает, при каком населении откроется. */

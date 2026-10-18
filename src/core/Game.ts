@@ -6,7 +6,7 @@ import type { ZoneType } from '../data/zones';
 import { Builder } from '../sim/Builder';
 import { InlineCompute } from '../workers/InlineCompute';
 import type { ComputeBackend } from '../workers/protocol';
-import { generateTerrain, terrainParams, type TerrainData } from '../world/Terrain';
+import { generateTerrain, terrainParams, type TerrainData, type TerrainStyle } from '../world/Terrain';
 import { World } from '../world/World';
 import { EventBus } from './EventBus';
 import type { GameEvents } from './events';
@@ -42,6 +42,8 @@ export interface GameOptions {
   /** готовый рельеф (например, из воркера); иначе генерируется синхронно */
   terrain?: TerrainData;
   size?: number;
+  /** стиль ландшафта (сохраняется вместе с игрой) */
+  terrainStyle?: TerrainStyle;
   config?: DeepPartial<GameConfig>;
   compute?: ComputeBackend;
 }
@@ -65,10 +67,13 @@ export class Game {
   private _byId = new Map<string, System>();
   private _started = false;
 
+  readonly terrainStyle: TerrainStyle | undefined;
+
   constructor(readonly options: GameOptions) {
+    this.terrainStyle = options.terrainStyle;
     this.config = mergeConfig({ ...options.config, ...(options.size ? { world: { ...options.config?.world, size: options.size } } : {}) });
     this.compute = options.compute ?? new InlineCompute();
-    const terrain = options.terrain ?? generateTerrain(terrainParams(this.config, options.seed));
+    const terrain = options.terrain ?? generateTerrain(terrainParams(this.config, options.seed, undefined, options.terrainStyle));
     this.world = new World(terrain, options.seed, this.config);
     this.speed = 1;
     this.builder = new Builder(this);

@@ -2,6 +2,7 @@ import { Color, type BufferGeometry, Matrix4, Quaternion, Vector3, type Scene } 
 import type { Game } from '../core/Game';
 import { isBuilding, type Building } from '../core/types';
 import './serviceExtras';
+import './modelsV2';
 import { installedUpgrades } from '../data/services';
 import { BuildingMaterials } from './Materials';
 import { InstancePool } from './InstancePool';

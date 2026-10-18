@@ -1,3 +1,4 @@
+import { keys } from './keybinds';
 import type { Game } from '../core/Game';
 import type { PreviewState, Tool, ToolContext } from '../core/Tool';
 import type { Pointer } from '../core/types';
@@ -283,16 +284,17 @@ export class Input implements ToolContext {
       return;
     }
     if (e.code === 'Escape') return this._escape();
-    if (e.code === 'Space') {
+    if (keys.is(e, 'pause')) {
       e.preventDefault();
       g.setSpeed(g.speed === 0 ? 1 : 0);
       return;
     }
     const speeds = g.config.time.speeds;
-    const digit = /^Digit([1-9])$/.exec(e.code);
-    if (digit && speeds[Number(digit[1])] !== undefined) return g.setSpeed(speeds[Number(digit[1])]);
+    for (const [i, id] of ['speed1', 'speed2', 'speed3'].entries()) if (keys.is(e, id) && speeds[i + 1] !== undefined) return g.setSpeed(speeds[i + 1]);
+    const toolHotkeys: Record<string, string> = { bulldoze: 'bulldoze', 'zone:none': 'dezone' };
     for (const item of g.toolbar.all()) {
-      if (item.hotkey === e.code && item.hotkey !== 'Escape') {
+      const bind = toolHotkeys[item.id];
+      if (bind ? keys.is(e, bind) : item.hotkey === e.code && item.hotkey !== 'Escape') {
         this.setTool(item.id);
         return;
       }

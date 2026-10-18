@@ -4,14 +4,18 @@ import type { Pointer } from '../core/types';
 import { onLocaleChange, setLocale, t } from '../i18n';
 import type { Renderer } from '../render/Renderer';
 import { Terrain } from '../world/Terrain';
+import { graphics } from '../render/graphics';
 import { h } from './dom';
+import { keys } from './keybinds';
 import { Clock, Hud } from './Hud';
 import { RouteTool } from '../tools/MoreTools';
 import { FirstPerson } from '../render/FirstPerson';
 import { cityBody, routesBody } from './TransitPanel';
 import { advisorList, eventBody, goalsBody, policiesBody } from './ProgressPanel';
 import { Input } from './Input';
-import { budgetBody, educationBody, helpBody, Inspector, Modal, settingsBody, statsBody } from './Panels';
+import { budgetBody, educationBody, helpBody, Inspector, Modal, statsBody } from './Panels';
+import { diagnosticsBody } from './DiagnosticsPanel';
+import { settingsBody } from './SettingsPanel';
 import { Toolbar } from './Toolbar';
 
 /** Сборка интерфейса поверх канваса. Пересобирается при смене языка. */
@@ -19,6 +23,7 @@ export class UI {
   readonly input: Input;
   private _modal = new Modal();
   private _toasts = h('div', { class: 'toasts' });
+  private _fps = h('div', { class: 'fps', style: 'display:none' });
   private _hint = h('div', { class: 'cursor-hint', style: 'display:none' });
   private _info = h('div', { class: 'cell-info' });
   private _mapsMenu = h('div', { class: 'panel maps-menu', style: 'display:none' });
@@ -53,20 +58,42 @@ export class UI {
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
       if (this.fp.active) return;
-      if (e.code === 'KeyB') this.openBudget();
-      if (this.fp.active) return;
-      if (e.code === 'KeyG' && !e.ctrlKey) this.openStats();
-      if (e.code === 'KeyT') this.openRoutes();
-      if (e.code === 'KeyE') this.openEducation();
-      if (e.code === 'KeyJ') this.openGoals();
-      if (e.code === 'KeyK') this.openPolicies();
-      if (e.code === 'KeyH') this.openCity();
-      if (e.code === 'KeyP') this.enterWalk();
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (keys.is(e, 'budget')) this.openBudget();
+      if (keys.is(e, 'stats')) this.openStats();
+      if (keys.is(e, 'routes')) this.openRoutes();
+      if (keys.is(e, 'education')) this.openEducation();
+      if (keys.is(e, 'goals')) this.openGoals();
+      if (keys.is(e, 'policies')) this.openPolicies();
+      if (keys.is(e, 'city')) this.openCity();
+      if (keys.is(e, 'diagnostics')) this.openDiagnostics();
+      if (keys.is(e, 'settings')) this.openSettings();
+      if (keys.is(e, 'walk')) this.enterWalk();
       if (e.code === 'Escape' && this._modal.isOpen) this._modal.close();
     });
     _root.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.btn')) _audio.sfx('tick');
     });
+    // масштаб интерфейса и счётчик FPS из настроек графики
+    const applyUi = (): void => {
+      this._root.style.setProperty('--ui-scale', String(graphics.get().uiScale));
+      this._fps.style.display = graphics.get().fps ? 'block' : 'none';
+    };
+    applyUi();
+    graphics.onChange(applyUi);
+    let frames = 0;
+    let last = performance.now();
+    const countFps = (): void => {
+      frames++;
+      const now = performance.now();
+      if (now - last >= 500) {
+        this._fps.textContent = `${Math.round((frames * 1000) / (now - last))} FPS`;
+        frames = 0;
+        last = now;
+      }
+      requestAnimationFrame(countFps);
+    };
+    requestAnimationFrame(countFps);
     onLocaleChange(() => this.build());
     this.build();
     this.input.setTool('select');
@@ -82,11 +109,12 @@ export class UI {
       budget: () => this.openBudget(),
       stats: () => this.openStats(),
       education: () => this.openEducation(),
+      diagnostics: () => this.openDiagnostics(),
       maps: (btn) => this._toggleMaps(btn),
       routes: () => this.openRoutes(),
       city: () => this.openCity(),
       walk: () => this.enterWalk(),
-      settings: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, renderer: this._renderer, audio: this._audio, onLocale: (l) => setLocale(l) })),
+      settings: () => this.openSettings(),
       help: () => this._modal.open(t('menu.help'), helpBody()),
       save: () => g.get('save').save(),
       goals: () => this.openGoals(),
@@ -103,7 +131,7 @@ export class UI {
       h('div', { class: 'fp-help', text: t('fp.help') }),
       h('button', { class: 'btn', text: `⏎ ${t('fp.exit')}`, onclick: () => this.fp.exit() }),
     );
-    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
+    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._fps, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
     this._buildTouchBar();
     this._advMenu.style.display = 'none';
     this._drawTracker();
@@ -113,7 +141,7 @@ export class UI {
   }
 
   openBudget(): void {
-    const b = budgetBody(this._game);
+    const b = budgetBody(this._game, () => this.openDiagnostics());
     this._modal.open(`💰 ${t('modal.budget')}`, b.el, () => b.tick());
   }
 
@@ -128,8 +156,8 @@ export class UI {
       b('✔', 'touch.confirm', () => this.input.press('Enter')),
       b('↺', 'touch.rotateL', () => this.input.press('Comma')),
       b('↻', 'touch.rotateR', () => this.input.press('Period')),
-      b('〰', 'touch.curve', () => this.input.press('KeyC')),
-      b('🧲', 'touch.snap', () => this.input.press('KeyV')),
+      b('〰', 'touch.curve', () => this.input.press(keys.code('curve'))),
+      b('🧲', 'touch.snap', () => this.input.press(keys.code('snap'))),
       b('◔', 'touch.brushSmaller', () => this.input.press('BracketLeft')),
       b('◕', 'touch.brushBigger', () => this.input.press('BracketRight')),
       b('⤴', 'touch.tiltUp', () => cam.rotate(0, 0.18)),
@@ -246,6 +274,15 @@ export class UI {
     if (on) this._game.bus.emit('select', null);
   }
 
+  openDiagnostics(): void {
+    const s = diagnosticsBody(this._game, (x, z) => { this._modal.close(); this._renderer.camera.focus(x, z); }, { budget: () => this.openBudget(), stats: () => this.openStats() });
+    this._modal.open(`🔍 ${t('modal.diagnostics')}`, s.el, () => s.tick());
+  }
+
+  openSettings(): void {
+    this._modal.open(`⚙️ ${t('menu.settings')}`, settingsBody({ game: this._game, audio: this._audio, onLocale: (l) => setLocale(l) }));
+  }
+
   openEducation(): void {
     const s = educationBody(this._game);
     this._modal.open(`🎓 ${t('modal.education')}`, s.el, () => s.tick());
@@ -262,7 +299,7 @@ export class UI {
       'div',
       { class: 'menu' },
       h('button', { class: 'btn wide', text: `💾 ${t('menu.save')}`, onclick: () => g.get('save').save() }),
-      h('button', { class: 'btn wide', text: `⚙️ ${t('menu.settings')}`, onclick: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, renderer: this._renderer, audio: this._audio, onLocale: (l) => setLocale(l) })) }),
+      h('button', { class: 'btn wide', text: `⚙️ ${t('menu.settings')}`, onclick: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, audio: this._audio, onLocale: (l) => setLocale(l) })) }),
       h('button', { class: 'btn wide', text: `❓ ${t('menu.help')}`, onclick: () => this._modal.open(t('menu.help'), helpBody()) }),
       h('button', { class: 'btn wide danger', text: `🏠 ${t('menu.exit')}`, onclick: () => { g.get('save').save(true); this._onExit(); } }),
     );
@@ -285,11 +322,28 @@ export class UI {
   }
 
   private _toast(text: string, kind: string): void {
-    const el = h('div', { class: `toast ${kind}`, text });
+    // одинаковые сообщения подряд склеиваются в счётчик ×N
+    const last = this._toasts.lastElementChild as (HTMLElement & { _n?: number; _t?: number; _o?: number }) | null;
+    if (last && last.dataset.text === text && !last.classList.contains('out')) {
+      last._n = (last._n ?? 1) + 1;
+      last.textContent = `${text}  ×${last._n}`;
+      clearTimeout(last._t);
+      clearTimeout(last._o);
+      this._schedule(last);
+      return;
+    }
+    const el = h('div', { class: `toast ${kind}`, text, title: t('toast.dismiss') }) as HTMLElement & { _t?: number; _o?: number };
+    el.dataset.text = text;
+    el.addEventListener('click', () => el.remove());
     this._toasts.append(el);
     while (this._toasts.children.length > 5) this._toasts.firstElementChild?.remove();
-    setTimeout(() => el.classList.add('out'), 4200);
-    setTimeout(() => el.remove(), 4800);
+    this._schedule(el);
+  }
+
+  private _schedule(el: HTMLElement & { _t?: number; _o?: number }): void {
+    el.classList.remove('out');
+    el._t = window.setTimeout(() => el.classList.add('out'), 4500);
+    el._o = window.setTimeout(() => el.remove(), 5100);
   }
 
   private _hover(p: Pointer | null): void {

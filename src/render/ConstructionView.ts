@@ -5,6 +5,7 @@ import { installedUpgrades } from '../data/services';
 import { GeomBuilder } from './GeomBuilder';
 import { serviceModel, zoneModel } from './models';
 import './serviceExtras';
+import './modelsV2';
 import type { View } from './View';
 
 const MAX = 400;

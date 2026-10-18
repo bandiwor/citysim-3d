@@ -1,3 +1,4 @@
+import { keys } from '../ui/keybinds';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
 import type { Tool, ToolContext, ToolOption } from '../core/Tool';
@@ -27,7 +28,13 @@ export class SelectTool implements Tool {
   hover(p: Pointer | null, ctx: ToolContext): void {
     if (!p) return ctx.clearPreview();
     const b = this._game.world.buildingAt(p.x, p.z);
-    if (!b) return ctx.clearPreview();
+    if (!b) {
+      // пустая размеченная клетка: почему здесь пока ничего нет
+      const cell = this._game.world.zones.near(p.x, p.z, CELL * 0.6).find((c) => c.zone && !c.building);
+      const why = cell ? this._game.get('diag').cellWhy(cell) : null;
+      if (cell && why) return ctx.setPreview({ hint: `${t(`zone.${this._game.zoneTypes.at(cell.zone - 1).id}.name`)} · ${t(why)}` });
+      return ctx.clearPreview();
+    }
     const g = this._game;
     const name = b.kind === 'zone' ? t(`zone.${b.zone}.name`) : t(`service.${b.defId}.name`);
     const z = b.kind === 'zone' ? g.zoneTypes.require(b.zone) : null;
@@ -164,12 +171,12 @@ export class RoadTool implements Tool {
   }
 
   key(code: string, ctx: ToolContext): boolean {
-    if (code === 'KeyV') {
+    if (keys.is(code, 'snap')) {
       this._snapMode = SNAP_MODES[(SNAP_MODES.indexOf(this._snapMode) + 1) % SNAP_MODES.length];
       if (this._last) this._refresh(this._last, ctx);
       return true;
     }
-    if (code !== 'KeyC') return false;
+    if (!keys.is(code, 'curve')) return false;
     this.options[0].set(this._mode === 'straight' ? 'curve' : 'straight');
     if (this._last) this._refresh(this._last, ctx);
     return true;

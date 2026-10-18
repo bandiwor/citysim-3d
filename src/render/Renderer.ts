@@ -18,12 +18,14 @@ import { AlertView } from './AlertView';
 import { BuildingView } from './BuildingView';
 import { ConstructionView } from './ConstructionView';
 import { CameraController } from './CameraController';
+import { graphics, type GraphicsSettings } from './graphics';
 import { PedestrianView } from './PedestrianView';
 import { PreviewView } from './PreviewView';
 import { RoadView } from './RoadView';
 import { RouteView } from './RouteView';
 import { TrafficLightView } from './TrafficLightView';
 import { TerrainView } from './TerrainView';
+import { GrassView } from './GrassView';
 import { PropView } from './PropView';
 import { TreeView } from './TreeView';
 import { VehicleView } from './VehicleView';
@@ -51,6 +53,8 @@ export class Renderer {
   /** ночь 0..1 для звука и освещения */
   night = 0;
   dayNight = true;
+  /** деревья и растения игрока показываются */
+  treesVisible = true;
   private _views: View[] = [];
   private _sun = new DirectionalLight(0xfff1d6, 2.4);
   private _hemi = new HemisphereLight(0xbfdcff, 0x5a6a4a, 0.9);
@@ -93,6 +97,7 @@ export class Renderer {
       new ConstructionView(this.scene, _game),
       new TreeView(this.scene, _game),
       new PropView(this.scene, _game),
+      new GrassView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance })),
       new TrafficLightView(this.scene, _game),
       new VehicleView(this.scene, _game),
       this.routes,
@@ -100,7 +105,27 @@ export class Renderer {
       new AlertView(this.scene, _game),
     );
     window.addEventListener('resize', () => this.resize());
+    this._applyGraphics(graphics.get());
+    graphics.onChange((g) => this._applyGraphics(g));
     this.resize();
+  }
+
+  /** Применяет настройки графики: тени, разрешение, туман, деревья, день/ночь. */
+  private _applyGraphics(g: GraphicsSettings): void {
+    this.setShadows(g.shadows);
+    const size = [1024, 2048, 4096][g.shadowQuality] ?? 2048;
+    if (this._sun.shadow.mapSize.x !== size) {
+      this._sun.shadow.map?.dispose();
+      this._sun.shadow.map = null;
+      this._sun.shadow.mapSize.set(size, size);
+    }
+    this.three.setPixelRatio(Math.min(window.devicePixelRatio, 2) * g.renderScale);
+    const fog = this.scene.fog as Fog;
+    fog.near = g.fog ? 300 : 20000;
+    fog.far = g.fog ? 1500 : 40000;
+    this.dayNight = g.dayNight;
+    this.treesVisible = g.trees;
+    if (this._views.length) this.resize();
   }
 
   addView(v: View): void {

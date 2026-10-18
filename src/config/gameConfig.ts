@@ -49,7 +49,10 @@ export const defaultConfig = {
     defaultTax: 9,
     maxTax: 25,
     loanStep: 10000,
-    maxLoans: 5,
+    /** базовый лимит кредита — столько шагов, плюс прибавка за каждого жителя */
+    maxLoans: 10,
+    loanPerResident: 25,
+    maxLoanTotal: 1_000_000,
     loanInterest: 0.01,
     /** доход с излишков энергии и воды, за единицу в месяц */
     /** прибавка к налогам от одной мэрии (максимум +10% суммарно) */

@@ -1,6 +1,7 @@
 import { Color, Matrix4, MeshLambertMaterial, Quaternion, Vector3, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import { PROPS } from '../data/props';
+import { graphics } from './graphics';
 import { InstancePool } from './InstancePool';
 import { propModel } from './propModels';
 import type { View } from './View';
@@ -29,7 +30,14 @@ export class PropView implements View {
     _game.bus.on('terrain:changed', () => (this._dirty = true));
   }
 
+  private _vis = true;
+
   update(): void {
+    const vis = graphics.get().trees;
+    if (vis !== this._vis) {
+      this._vis = vis;
+      for (const p of this._pools.values()) p.mesh.visible = vis;
+    }
     if (!this._dirty) return;
     this._dirty = false;
     const w = this._game.world;

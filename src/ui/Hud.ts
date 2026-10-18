@@ -24,7 +24,7 @@ export class Hud {
   private _timer = 0;
   private _off: () => void;
 
-  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; education(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void; goals(): void; policies(): void; advisor(btn: HTMLElement): void; event(): void }) {
+  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; education(): void; diagnostics(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void; goals(): void; policies(): void; advisor(btn: HTMLElement): void; event(): void }) {
     const bars = h('div', { class: 'rci', title: t('hud.demand') });
     for (const z of _game.zoneTypes.all()) {
       const fill = h('div', { class: 'rci-fill', style: `background:#${z.color.toString(16).padStart(6, '0')}` });
@@ -59,6 +59,7 @@ export class Hud {
         h('button', { class: 'btn icon', text: '📜', title: `${t('hud.policies')} (K)`, onclick: actions.policies }),
         h('button', { class: 'btn icon', text: '💰', title: `${t('hud.budget')} (B)`, onclick: actions.budget }),
         h('button', { class: 'btn icon', text: '📊', title: `${t('hud.stats')} (G)`, onclick: actions.stats }),
+        h('button', { class: 'btn icon', text: '🔍', title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, onclick: actions.diagnostics }),
         h('button', { class: 'btn icon', text: '🎓', title: `${t('hud.education')} (E)`, onclick: actions.education }),
         h('button', { class: 'btn icon', text: '🚌', title: `${t('hud.routes')} (T)`, onclick: actions.routes }),
         h('button', { class: 'btn icon', text: '🗑️', title: `${t('hud.city')} (H)`, onclick: actions.city }),

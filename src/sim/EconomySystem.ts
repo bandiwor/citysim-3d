@@ -61,9 +61,15 @@ export class EconomySystem implements System {
     this._transitMonth += v;
   }
 
+  /** Лимит кредита: растёт вместе с городом. */
+  get creditLimit(): number {
+    const c = this._game.config.economy;
+    return Math.min(c.maxLoanTotal, c.loanStep * c.maxLoans + this._game.get('stats').population * c.loanPerResident);
+  }
+
   takeLoan(): void {
     const c = this._game.config.economy;
-    if (this.debt >= c.loanStep * c.maxLoans) return this._game.message('msg.loanDenied', undefined, 'warn');
+    if (this.debt + c.loanStep > this.creditLimit) return this._game.message('msg.loanDenied', undefined, 'warn');
     this.debt += c.loanStep;
     this.money += c.loanStep;
     this._game.bus.emit('economy:changed');

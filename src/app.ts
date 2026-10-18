@@ -29,9 +29,9 @@ export async function boot(): Promise<void> {
 
   // тяжёлые расчёты (рельеф, карты влияния, поиск пути) идут в Web Worker
   const compute: ComputeBackend = workersSupported() ? new WorkerCompute() : new InlineCompute();
-  const terrain = await compute.generateTerrain(terrainParams(config, choice.seed, choice.size));
+  const terrain = await compute.generateTerrain(terrainParams(config, choice.seed, choice.size, choice.style));
   const build = (): Game => {
-    const g = new Game({ seed: choice.seed, terrain, compute, config: { progress: { enabled: choice.mode === 'career' } } });
+    const g = new Game({ seed: choice.seed, terrain, terrainStyle: choice.style, compute, config: { progress: { enabled: choice.mode === 'career' } } });
     // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
     g.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(natureFeature).use(disastersFeature);
     return g;

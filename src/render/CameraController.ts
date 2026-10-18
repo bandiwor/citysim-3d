@@ -1,3 +1,5 @@
+import { keys } from '../ui/keybinds';
+import { graphics } from './graphics';
 import { MathUtils, PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from 'three';
 import { CELL } from '../config/constants';
 import type { GameConfig } from '../config/gameConfig';
@@ -39,7 +41,8 @@ export class CameraController {
       'wheel',
       (e) => {
         e.preventDefault();
-        this.zoom(e.deltaY > 0 ? this._cfg.zoomStep : 1 / this._cfg.zoomStep);
+        const step = Math.pow(this._cfg.zoomStep, graphics.get().zoomSpeed);
+        this.zoom(e.deltaY > 0 ? step : 1 / step);
       },
       { passive: false },
     );
@@ -119,13 +122,13 @@ export class CameraController {
       } else this._follow = null;
     }
     const k = this._keys;
-    const speed = this.distance * this._cfg.panSpeed * dt;
+    const speed = this.distance * this._cfg.panSpeed * graphics.get().panSpeed * dt;
     let fx = 0;
     let fz = 0;
-    if (k.has('KeyW') || k.has('ArrowUp')) fz -= 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) fz += 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) fx -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) fx += 1;
+    if (k.has(keys.code('panUp')) || k.has('ArrowUp')) fz -= 1;
+    if (k.has(keys.code('panDown')) || k.has('ArrowDown')) fz += 1;
+    if (k.has(keys.code('panLeft')) || k.has('ArrowLeft')) fx -= 1;
+    if (k.has(keys.code('panRight')) || k.has('ArrowRight')) fx += 1;
     if (fx || fz) {
       this._follow = null;
       const sy = Math.sin(g.yaw);
@@ -134,12 +137,12 @@ export class CameraController {
       g.target.z += (-fx * sy + fz * cy) * speed;
       this._clampGoal();
     }
-    if (k.has('KeyQ')) g.yaw -= dt * this._cfg.rotateSpeed;
-    if (k.has('KeyE')) g.yaw += dt * this._cfg.rotateSpeed;
-    if (k.has('KeyR')) g.pitch = Math.min(1.4, g.pitch + dt);
-    if (k.has('KeyF')) g.pitch = Math.max(0.25, g.pitch - dt);
-    if (k.has('Equal') || k.has('NumpadAdd')) this.zoom(1 - dt * 1.5);
-    if (k.has('Minus') || k.has('NumpadSubtract')) this.zoom(1 + dt * 1.5);
+    if (k.has(keys.code('rotateLeft'))) g.yaw -= dt * this._cfg.rotateSpeed * graphics.get().rotateSpeed;
+    if (k.has(keys.code('rotateRight'))) g.yaw += dt * this._cfg.rotateSpeed * graphics.get().rotateSpeed;
+    if (k.has(keys.code('tiltUp'))) g.pitch = Math.min(1.4, g.pitch + dt);
+    if (k.has(keys.code('tiltDown'))) g.pitch = Math.max(0.25, g.pitch - dt);
+    if (k.has(keys.code('zoomIn')) || k.has('NumpadAdd')) this.zoom(1 - dt * 1.5);
+    if (k.has(keys.code('zoomOut')) || k.has('NumpadSubtract')) this.zoom(1 + dt * 1.5);
 
     const t = 1 - Math.exp(-dt * this._cfg.smoothing);
     this.target.lerp(g.target, t);
