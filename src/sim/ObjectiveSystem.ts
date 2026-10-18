@@ -65,7 +65,7 @@ export class ObjectiveSystem implements System {
         return u.powerDemand > 0 ? u.powerSupply / u.powerDemand : 0;
       }
       case 'level3':
-        return g.world.list().filter((b) => b.kind === 'zone' && b.level >= 3 && !b.abandoned).length;
+        return g.world.list().filter((b) => b.kind === 'zone' && b.wealth >= 3 && !b.abandoned).length;
       case 'money':
         return g.get('economy').money;
       case 'flow':
@@ -146,7 +146,7 @@ export class ObjectiveSystem implements System {
     }
     if (pop >= 150 && st.unemployment > 0.06) add('jobs', '', 0.95, 1800);
     if (pop >= 300) {
-      const lv3 = g.world.list().filter((b) => b.kind === 'zone' && b.level >= 3).length;
+      const lv3 = g.world.list().filter((b) => b.kind === 'zone' && b.wealth >= 3).length;
       add('level3', '', lv3 + 3, 3000);
     }
     const u = g.get('utility');

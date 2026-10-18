@@ -18,13 +18,14 @@ const WHITE_MAT = new MeshLambertMaterial({ color: 0xffffff });
 const BLADE_GEO = new BoxGeometry(0.2, 6.2, 0.55).translate(0, 3.1, 0);
 
 /** Столб дыма: несколько «клубов» циклически поднимаются, растут и бледнеют. */
-function smoke(x: number, y: number, z: number, strength: number): Part {
+function smoke(x: number, y: number, z: number, strength: number, color = 0x8d9298): Part {
   const g = new Group();
   g.position.set(x, y, z);
   const puffs: Mesh[] = [];
   const n = Math.max(2, Math.round(6 * strength));
   for (let i = 0; i < n; i++) {
     const m = new Mesh(SMOKE_GEO, SMOKE_MAT.clone());
+    (m.material as MeshBasicMaterial).color.setHex(color);
     puffs.push(m);
     g.add(m);
   }
@@ -171,6 +172,19 @@ animations.set('plaza', () => [fountain(0, 1.7, 0, 0.9)]);
 animations.set('landfill', () => [gulls(9)]);
 animations.set('recycling', () => [spinner(5.6, 7.6, -3.4, 0x2f9f5f)]);
 animations.set('townhall', () => [flag(0, 17.2, -2.4, 0x2f6fd0)]);
+animations.set('nuclear', (b, g) => [smoke(-6, 13.4, -5, 1.3, 0xf2f4f6), smoke(5, 13.4, -6, 1.3, 0xf2f4f6), ...(has(g, b, 'cooling') ? [smoke(9, 6, 7, 0.8, 0xf2f4f6)] : [])]);
+animations.set('geothermal', () => [smoke(4.4, 3.8, -3.6, 0.9, 0xeef2f5)]);
+animations.set('windfarm', (b, g) => {
+  const sp = has(g, b, 'rotors') ? 4.4 : 3.2;
+  const parts = [rotor(-6, 12, -7, sp, 0.85), rotor(8, 12, -7, sp * 0.9, 0.85), rotor(-6, 12, 7, sp * 1.1, 0.85), rotor(8, 12, 7, sp, 0.85)];
+  if (has(g, b, 'rotors')) parts.push(rotor(0.3, 12, -10, sp, 0.85));
+  return parts;
+});
+animations.set('desalination', () => [smoke(0, 5, -5, 0.4, 0xeef2f5)]);
+animations.set('firehelidepot', () => [beacon(-2.6, 5.2, -3.6, 0xff2a2a, 0xffb02a), spinner(3.4, 2.4, 3.4, 0xe8e8e8)]);
+animations.set('firepost', () => [beacon(0, 3.9, 0, 0xff2a2a, 0xffb02a)]);
+animations.set('policepost', () => [beacon(0, 4.1, 0)]);
+animations.set('medcenter', () => [beacon(3, 6, -1.4, 0xff3030, 0xffffff)]);
 animations.set('school', () => [flag(6, 8.2, 5, 0xd33a3a)]);
 
 /** Анимированные детали специальных зданий: дым, лопасти, мигалки, фонтаны, чайки. */

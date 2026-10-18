@@ -74,6 +74,7 @@ export class UtilitySystem implements System {
     this.powerSupply = this.powerDemand = this.waterSupply = this.waterDemand = 0;
     const list = g.world.list();
     const pm = g.get('mods').mul('powerDemand');
+    const wm = g.get('mods').mul('waterDemand');
 
     for (const b of list) {
       if (b.powerOut > 0 && !isIdle(b)) {
@@ -97,7 +98,7 @@ export class UtilitySystem implements System {
       }
     }
     for (const b of list) {
-      const need = isIdle(b) ? 0 : b.waterNeed;
+      const need = isIdle(b) ? 0 : b.waterNeed * wm;
       this.waterDemand += need;
       if (need <= 0) b.watered = true;
       else if (b.comp >= 0 && wLeft[b.comp] >= need) {

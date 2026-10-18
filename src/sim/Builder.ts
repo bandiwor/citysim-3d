@@ -379,11 +379,13 @@ export class Builder {
   }
 
   /** zoneId = null — снять зонирование. Возвращает число изменённых клеток. */
-  paintZone(x: number, z: number, r: number, zoneId: string | null): { ok: boolean; changed: number; reasonKey?: string } {
+  paintZone(x: number, z: number, r: number, zoneId: string | null, density = 0): { ok: boolean; changed: number; reasonKey?: string } {
     const game = this._game;
     const zone = zoneId ? game.zoneTypes.require(zoneId) : null;
     const target = zone ? zone.index + 1 : 0;
-    const cells = this.cellsInBrush(x, z, r).filter((c) => c.zone !== target && (target === 0 || !c.building));
+    if (zone && density > 0 && !game.get('progress').isUnlocked(`density:${density}`)) return { ok: false, changed: 0, reasonKey: 'err.locked' };
+    // перекраска той же зоны с другой плотностью меняет плотность клетки (здание остаётся, пока его не снесут)
+    const cells = this.cellsInBrush(x, z, r).filter((c) => (c.zone !== target || (zone && c.density !== density)) && (target === 0 || c.zone === target || !c.building));
     if (!cells.length) return { ok: false, changed: 0 };
     const cost = zone ? cells.length * zone.cost : 0;
     if (!game.get('economy').spend(cost)) return { ok: false, changed: 0, reasonKey: 'err.money' };
@@ -393,6 +395,7 @@ export class Builder {
         if (b) this.removeBuilding(b);
       }
       c.zone = target;
+      c.density = zone ? density : 0;
     }
     game.bus.emit('zones:changed');
     game.sfx(zone ? 'zone' : 'bulldoze');
@@ -714,6 +717,8 @@ export class Builder {
   /** Новая постройка на клетке зонирования. */
   spawnOnCell(cell: ZoneCell, zoneId: string): Building {
     const b = this.createBuilding('zone', zoneId, cell.x, cell.z, cell.rot, CELL - 1, CELL - 1, cell.id);
+    b.level = Math.min(this._game.zoneTypes.require(zoneId).levels.length, cell.density + 1);
+    this.applyStats(b);
     b.access = cell.edge;
     b.accessS = cell.s;
     this.beginBuild(b);
@@ -767,6 +772,7 @@ export class Builder {
       con: 1,
       conKind: 0,
       conLevel: 0,
+      wealth: 1,
       conUp: 0,
       conDur: 0,
     };
@@ -780,10 +786,11 @@ export class Builder {
     if (b.kind === 'zone') {
       const z = g.zoneTypes.require(b.zone);
       const lv = z.levels[b.level - 1];
-      b.cap = z.housing ? lv.capacity : 0;
-      b.jobs = z.housing ? 0 : lv.capacity;
-      b.powerNeed = lv.capacity * z.powerPer;
-      b.waterNeed = lv.capacity * z.waterPer;
+      const cap = Math.round(lv.capacity * z.wealth[b.wealth - 1].capMul);
+      b.cap = z.housing ? cap : 0;
+      b.jobs = z.housing ? 0 : cap;
+      b.powerNeed = cap * z.powerPer;
+      b.waterNeed = cap * z.waterPer;
     } else {
       const d = effectiveDef(g.services.require(b.defId), b.up);
       b.jobs = d.jobs;
@@ -853,12 +860,12 @@ export class Builder {
     b.conDur = this._duration(b, 0);
   }
 
-  /** Здание уровня L → L+1: леса и кран, затем смена модели. */
-  beginLevelUp(b: Building, level: number): void {
-    if (!this._cfg.construction.enabled) return this.setLevel(b, level);
+  /** Здание богатеет ★N → ★N+1: леса и кран, затем смена внешнего вида и вместимости. */
+  beginWealthUp(b: Building, wealth: number): void {
+    if (!this._cfg.construction.enabled) return this.setWealth(b, wealth);
     b.con = 0;
     b.conKind = 1;
-    b.conLevel = level;
+    b.conLevel = wealth;
     b.conDur = this._duration(b, 1);
     this._game.bus.emit('building:updated', b);
   }
@@ -869,7 +876,7 @@ export class Builder {
     b.con = 1;
     b.conKind = 0;
     if (kind === 1) {
-      b.level = b.conLevel;
+      b.wealth = b.conLevel;
       b.variant = Math.floor(Math.random() * this._game.config.render.zoneVariants);
       this.applyStats(b);
       this._game.sfx('levelup');
@@ -881,13 +888,13 @@ export class Builder {
     this._game.bus.emit('building:updated', b);
   }
 
-  /** Меняет уровень здания (апгрейд/даунгрейд). */
-  setLevel(b: Building, level: number): void {
-    b.level = level;
+  /** Меняет благосостояние здания (апгрейд/даунгрейд). */
+  setWealth(b: Building, wealth: number): void {
+    b.wealth = wealth;
     b.variant = Math.floor(Math.random() * this._game.config.render.zoneVariants);
     this.applyStats(b);
     this._game.bus.emit('building:updated', b);
-    this._game.sfx(level > 1 ? 'levelup' : 'tick');
+    this._game.sfx(wealth > 1 ? 'levelup' : 'tick');
   }
 }
 

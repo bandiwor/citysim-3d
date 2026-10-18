@@ -111,7 +111,6 @@ export class GrowthSystem implements System {
       b.happiness += (this.happinessOf(b) - b.happiness) * c.happinessSmoothing;
       if (b.kind !== 'zone' || isBuilding(b)) continue;
       const z = g.zoneTypes.require(b.zone);
-      const lv = z.levels[b.level - 1];
       const ok = b.powered && b.watered && b.access > 0;
 
       if (!ok) b.outage += dt;
@@ -152,11 +151,13 @@ export class GrowthSystem implements System {
       if (!ok || b.con < 1) continue;
       const land = maps.sample('landValue', b.x, b.z);
       const edu = maps.sample('education', b.x, b.z);
-      const next = z.levels[b.level];
+      // богатеет (★) внутри выбранной плотности; плотность задаёт игрок заливкой
+      const next = z.wealth[b.wealth];
+      const cur = z.wealth[b.wealth - 1];
       if (next && land >= next.reqLand && edu >= next.reqEdu && b.happiness > c.upgradeHappiness && (demand[z.id] ?? 0) > c.upgradeDemand && Math.random() < c.upgradeChance) {
-        g.builder.beginLevelUp(b, b.level + 1);
-      } else if (b.level > 1 && (land < lv.reqLand - c.downgradeLandSlack || b.happiness < c.downgradeHappiness) && Math.random() < c.downgradeChance) {
-        g.builder.setLevel(b, b.level - 1);
+        g.builder.beginWealthUp(b, b.wealth + 1);
+      } else if (b.wealth > 1 && (land < cur.reqLand - c.downgradeLandSlack || b.happiness < c.downgradeHappiness) && Math.random() < c.downgradeChance) {
+        g.builder.setWealth(b, b.wealth - 1);
         b.pop = Math.min(b.pop, b.cap);
       }
     }

@@ -104,7 +104,7 @@ export class EconomySystem implements System {
         const z = g.zoneTypes.require(b.zone);
         const units = z.housing ? b.pop : b.workers;
         const rate = (this.taxes[z.id] ?? c.defaultTax) / 100;
-        let v = units * z.wage * rate * (c.landTaxBase + maps.sample('landValue', b.x, b.z));
+        let v = units * z.wage * z.wealth[b.wealth - 1].taxMul * rate * (c.landTaxBase + maps.sample('landValue', b.x, b.z));
         if (z.id === 'com') v *= c.goodsBase + c.goodsK * b.goods;
         income[z.id as 'res' | 'com' | 'ind'] = (income[z.id as 'res' | 'com' | 'ind'] ?? 0) + v * incomeMul;
       } else {

@@ -45,7 +45,7 @@ export class AlertView implements View {
       else if (b.incident > 0) kind = 'crime';
       else if (b.pop > 0 && b.sick / b.pop >= this._game.config.disease.spreadThreshold) kind = 'sick';
       else if (b.dead > 0 && b.deadFor > this._game.config.death.iconAfter) kind = 'dead';
-      else if (b.garbage > this._game.config.garbage.cap * this._game.config.garbage.unhappyAt) kind = 'garbage';
+      else if (b.garbage > this._game.config.garbage.cap * this._game.config.garbage.unhappyAt && !this._game.get('sanitation').isTargeted(b.id)) kind = 'garbage';
       else if (!b.abandoned) {
         if (!b.access && (b.kind === 'zone' || b.powerNeed > 0)) kind = 'road';
         else if (!b.powered) kind = 'power';

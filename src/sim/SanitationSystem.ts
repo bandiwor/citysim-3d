@@ -50,8 +50,15 @@ export class SanitationSystem implements System {
     this._stats();
   }
 
+  /** Мусоровоз уже едет к зданию. */
+  isTargeted(id: number): boolean {
+    return this._targeted.has(id);
+  }
+
   private _produce(dt: number): void {
     const g = this._game;
+    // пока свалки не открыты, мусор не копится (иначе игрок не смог бы ничего сделать)
+    const producing = g.get('progress').isUnlocked('service:landfill');
     const gc = g.config.garbage;
     const dc = g.config.death;
     const maps = g.get('maps');
@@ -59,7 +66,7 @@ export class SanitationSystem implements System {
       if (isIdle(b)) continue;
       const housing = b.kind === 'zone' && g.zoneTypes.require(b.zone).housing;
       const rate = (housing ? b.pop * gc.perResident : (b.kind === 'zone' ? b.workers : b.jobs * 0.5) * gc.perJob) * g.get('mods').mul('garbage');
-      b.garbage = Math.min(gc.cap * 1.25, b.garbage + rate * dt);
+      if (producing) b.garbage = Math.min(gc.cap * 1.25, b.garbage + rate * dt);
       b.deadFor = b.dead > 0 ? b.deadFor + dt : 0;
       if (!housing || b.pop < 1) continue;
       const health = maps.sample('health', b.x, b.z);

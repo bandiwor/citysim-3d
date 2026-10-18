@@ -308,10 +308,50 @@ const IND: Maker[][] = [
   ],
 ];
 
-const TABLE: Record<string, Maker[][]> = { res: RES, com: COM, ind: IND };
+// ================= ОФИСЫ (высокая плотность «промышленной» зоны) =================
 
-/** Отделок на проект: простой, с деталями, с другими деталями. */
-const DECORS = 3;
+const GLASS = [0xcfe3f0, 0xc3d9e8, 0xd6e6ef, 0xbcd3e3];
+
+const OFFICES: Maker[] = [
+  // плита-небоскрёб
+  (b, r) => {
+    const h = floorsIn(r, 6, 11) * FLOOR;
+    b.box(7.6, h, 5.6, 0, 0, 0, GLASS[0], { windows: true }).box(8, 0.5, 6, 0, h, 0, 0x6f7a85).box(2.6, 1.6, 2.4, -1.4, h + 0.5, 0.4, 0xaab3ba).cylinder(0.08, 0.08, 3.4, 2, h + 0.5, -1, 0xcfcfcf, 4);
+  },
+  // две башни со стеклянным мостиком
+  (b, r) => {
+    const h1 = floorsIn(r, 7, 11) * FLOOR;
+    const h2 = floorsIn(r, 5, 9) * FLOOR;
+    b.box(3.4, h1, 4.6, -2.3, 0, 0, GLASS[1], { windows: true }).box(3.4, h2, 4.6, 2.3, 0, 0, GLASS[2], { windows: true });
+    b.box(3, 1.4, 2, 0, h2 * 0.6, 0, 0x9fb7c9).box(3.6, 0.4, 4.8, -2.3, h1, 0, 0x6f7a85).box(3.6, 0.4, 4.8, 2.3, h2, 0, 0x6f7a85);
+  },
+  // ступенчатая башня
+  (b, r) => {
+    const f = floorsIn(r, 3, 4) * FLOOR;
+    b.box(8, f, 6, 0, 0, 0, GLASS[3], { windows: true }).box(6, f, 4.6, 0, f, 0, GLASS[0], { windows: true }).box(4, f * 1.2, 3.2, 0, f * 2, 0, GLASS[1], { windows: true }).cylinder(0.1, 0.1, 3.8, 0, f * 3.2, 0, 0xcfcfcf, 4);
+    b.box(8.2, 0.4, 6.2, 0, f - 0.2, 0, 0x6f7a85).box(6.2, 0.4, 4.8, 0, f * 2 - 0.2, 0, 0x6f7a85);
+  },
+  // кампус: Г-образный офис с атриумом и парковкой
+  (b) => {
+    b.box(8, 4 * FLOOR, 3.4, 0, 0, -2, GLASS[2], { windows: true }).box(3.4, 4 * FLOOR, 4.2, 2.3, 0, 1.8, GLASS[0], { windows: true });
+    b.box(8.2, 0.4, 3.6, 0, 4 * FLOOR, -2, 0x6f7a85).box(3.6, 0.4, 4.4, 2.3, 4 * FLOOR, 1.8, 0x6f7a85).box(3.6, 0.1, 3.6, -2.4, 0, 2.2, 0x555a60).box(0.15, 0.12, 3, -3.8, 0.1, 2.2, 0xe8e8e0);
+  },
+  // круглая башня с обзорным шаром
+  (b, r) => {
+    const h = floorsIn(r, 7, 11) * FLOOR;
+    b.cylinder(2.8, 3, h, 0, 0, 0, GLASS[1], 16).cylinder(3.1, 3.1, 0.5, 0, h, 0, 0x6f7a85, 16).cylinder(0.12, 0.12, 4.2, 0, h + 0.5, 0, 0xcfcfcf, 4).sphere(1.2, 0, h + 0.5, 0, 0x9fb7c9);
+    b.cylinder(3.4, 3.4, 1.2, 0, 0, 0, 0xcfd3d6, 16);
+  },
+  // подиум и башня
+  (b, r) => {
+    const h = floorsIn(r, 7, 10) * FLOOR;
+    b.box(8.4, 2 * FLOOR, 6.4, 0, 0, 0, 0xd8dde3, { windows: true }).box(8.6, 0.4, 6.6, 0, 2 * FLOOR, 0, 0x6f7a85).box(5, h, 3.6, -0.8, 2 * FLOOR + 0.4, -0.6, GLASS[0], { windows: true }).box(5.2, 0.4, 3.8, -0.8, 2 * FLOOR + 0.4 + h, -0.6, 0x6f7a85);
+    b.box(2, 0.2, 1.6, 2.6, 2 * FLOOR + 0.4, 1.8, 0x62b85a);
+  },
+];
+
+/** Таблица моделей по плотности: у «промышленной» зоны низкая — мастерские, средняя — заводы (включая бывшие гиганты), высокая — офисы. */
+const TABLE: Record<string, Maker[][]> = { res: RES, com: COM, ind: [IND[0], [...IND[1], ...IND[2]], OFFICES] };
 
 /** Детали поверх базовой постройки: размещаются по габаритному ящику готовой геометрии (крыша, фасад +Z). */
 function decorate(zone: string, level: number, deco: number, r: Rng, box: Box3, b: GeomBuilder): void {
@@ -367,26 +407,35 @@ function decorate(zone: string, level: number, deco: number, r: Rng, box: Box3, 
 }
 
 /**
- * Геометрия здания зоны: 6 проектов на уровень × 3 отделки (простая, с деталями, с другими деталями) = 18 вариантов.
- * Новые зоны без модели рисуются как простая коробка.
+ * Геометрия здания зоны: `level` — плотность (1 низкая … 3 высокая), `wealth` — благосостояние ★1..3: богаче — крупнее и с деталями
+ * (балконы, вывески, ограды и т. п.). Новые зоны без модели рисуются как простая коробка.
  */
-export function zoneModel(zone: string, level: number, variant: number): BufferGeometry {
+export function zoneModel(zone: string, level: number, variant: number, wealth = 1): BufferGeometry {
   const levels = TABLE[zone];
   const makers = levels?.[Math.min(level, levels.length) - 1];
   const b = new GeomBuilder();
   if (!makers) return b.box(6, 4 * level, 6, 0, 0, 0, W, { windows: true }).build();
-  const n = ((variant % (makers.length * DECORS)) + makers.length * DECORS) % (makers.length * DECORS);
-  const v = n % makers.length;
-  const deco = Math.floor(n / makers.length);
-  const seed = zone.charCodeAt(0) * 1000 + level * 37 + v * 7919 + deco * 104729;
+  const v = ((variant % makers.length) + makers.length) % makers.length;
+  const deco = Math.max(0, Math.min(2, wealth - 1));
+  const seed = zone.charCodeAt(0) * 1000 + level * 37 + v * 7919;
   makers[v](b, new Rng(seed));
   const base = b.build();
-  if (deco === 0) return base;
+  if (deco === 0 && wealth <= 1) return base;
   base.computeBoundingBox();
   const extra = new GeomBuilder();
-  decorate(zone, level, deco, new Rng(seed + 1), base.boundingBox!, extra);
-  return mergeParts([base, extra.build()]);
+  // богатые здания несут детали обоих наборов отделки
+  let any = false;
+  if (deco >= 1) {
+    decorate(zone, level, 1, new Rng(seed + 1), base.boundingBox!, extra);
+    any = true;
+  }
+  if (deco >= 2) decorate(zone, level, 2, new Rng(seed + 2), base.boundingBox!, extra);
+  const out = any ? mergeParts([base, extra.build()]) : base;
+  // и чуть крупнее
+  const k = 1 + 0.05 * (wealth - 1);
+  out.scale(k, k, k);
+  return out;
 }
 
-/** Сколько вариантов внешнего вида есть у уровня зоны. */
-export const zoneVariantCount = (zone: string, level: number): number => (TABLE[zone]?.[level - 1]?.length ?? 1) * DECORS;
+/** Сколько проектов внешнего вида у плотности зоны. */
+export const zoneVariantCount = (zone: string, level: number): number => TABLE[zone]?.[level - 1]?.length ?? 1;

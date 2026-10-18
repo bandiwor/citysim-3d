@@ -31,7 +31,7 @@ export class SelectTool implements Tool {
     const g = this._game;
     const name = b.kind === 'zone' ? t(`zone.${b.zone}.name`) : t(`service.${b.defId}.name`);
     const z = b.kind === 'zone' ? g.zoneTypes.require(b.zone) : null;
-    const lv = z ? `${'★'.repeat(b.level)} ` : '';
+    const lv = z ? `${'★'.repeat(b.wealth)} ` : '';
     const detail = z ? (z.housing ? `👥 ${Math.round(b.pop)}/${Math.round(b.cap)}` : `💼 ${Math.round(b.workers)}/${Math.round(b.jobs)}`) : b.jobs ? `💼 ${Math.round(b.workers)}/${Math.round(b.jobs)}` : '';
     ctx.setPreview({ hint: `${lv}${name}${detail ? ` · ${detail}` : ''}` });
   }
@@ -232,6 +232,7 @@ export class ZoneTool implements Tool {
   readonly showGrid = true;
   readonly options: ToolOption[];
   private _brush: number;
+  private _density = 0;
   private _painting = false;
   private _last: Pointer | null = null;
 
@@ -246,6 +247,25 @@ export class ZoneTool implements Tool {
         get: () => String(this._brush),
         set: (id) => (this._brush = Number(id)),
       },
+      ...(_zoneId
+        ? [
+            {
+              id: 'density',
+              labelKey: 'opt.density',
+              choices: [0, 1, 2].map((n) => ({ id: String(n), labelKey: `density.${_zoneId}.${n}.name` })),
+              get: () => String(this._density),
+              set: (id: string) => {
+                const n = Number(id);
+                if (n > 0 && !this._game.get('progress').isUnlocked(`density:${n}`)) {
+                  this._game.message('err.locked', undefined, 'bad');
+                  this._game.sfx('error');
+                  return;
+                }
+                this._density = n;
+              },
+            },
+          ]
+        : []),
     ];
   }
 
@@ -269,7 +289,7 @@ export class ZoneTool implements Tool {
     const cells = this._game.builder.cellsInBrush(p.x, p.z, r);
     const color = this._color;
     const quads = cells.map((c) => {
-      const ok = c.zone !== target && (target === 0 || !c.building);
+      const ok = (c.zone !== target || (target !== 0 && c.density !== this._density)) && (target === 0 || c.zone === target || !c.building);
       return { x: c.x, z: c.z, rot: c.rot, w: CELL - 0.4, d: CELL - 0.4, ok, color: ok ? color : 0x888888 };
     });
     const n = quads.filter((q) => q.ok).length;
@@ -305,7 +325,7 @@ export class ZoneTool implements Tool {
   }
 
   private _paint(p: Pointer, ctx: ToolContext): void {
-    const r = this._game.builder.paintZone(p.x, p.z, this._radius, this._zoneId);
+    const r = this._game.builder.paintZone(p.x, p.z, this._radius, this._zoneId, this._density);
     if (r.reasonKey) this._game.message(r.reasonKey, undefined, 'bad');
     this.hover(p, ctx);
   }

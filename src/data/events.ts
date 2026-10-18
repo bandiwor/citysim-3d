@@ -130,4 +130,89 @@ export const CITY_EVENTS: CityEventDef[] = [
       { id: 'austerity', days: 60, mul: { income: 0.9 }, add: { happiness: -0.02 } },
     ],
   },
+  {
+    id: 'drought',
+    icon: '🏜️',
+    weight: 2,
+    minPop: 300,
+    options: [
+      { id: 'restrict', cost: (p) => 300 + p * 0.4, days: 45, mul: { waterDemand: 1.05 } },
+      { id: 'ignore', days: 45, mul: { waterDemand: 1.3 }, add: { happiness: -0.02 } },
+    ],
+  },
+  {
+    id: 'tourists',
+    icon: '🧳',
+    weight: 2,
+    minPop: 400,
+    needs: 'service:park',
+    options: [
+      { id: 'promote', cost: (p) => 800 + p * 0.6, days: 60, mul: { income: 1.06 }, add: { demandCom: 0.15 } },
+      { id: 'quiet', days: 20, add: { demandCom: 0.04 } },
+    ],
+  },
+  {
+    id: 'strike',
+    icon: '🪧',
+    weight: 2,
+    minPop: 500,
+    options: [
+      { id: 'negotiate', cost: (p) => 1000 + p * 1.2, days: 30, add: { happiness: 0.02 } },
+      { id: 'wait', days: 45, mul: { income: 0.92 }, add: { happiness: -0.04, demandInd: -0.1 } },
+    ],
+  },
+  {
+    id: 'smog',
+    icon: '🌫️',
+    weight: 2,
+    minPop: 600,
+    options: [
+      { id: 'ban', cost: (p) => 600 + p * 0.7, days: 30, mul: { disease: 1.2 }, add: { demandInd: -0.05 } },
+      { id: 'endure', days: 30, mul: { disease: 1.8 }, add: { happiness: -0.03 } },
+    ],
+  },
+  {
+    id: 'sciencefair',
+    icon: '🔬',
+    weight: 2,
+    minPop: 600,
+    needs: 'service:highschool',
+    options: [
+      { id: 'sponsor', cost: (p) => 1200 + p * 0.8, days: 90, mul: { eduRate: 1.6 } },
+      { id: 'skip' },
+    ],
+  },
+  {
+    id: 'marathon',
+    icon: '🏃',
+    weight: 2,
+    minPop: 500,
+    needs: 'service:sports',
+    options: [
+      { id: 'host', cost: (p) => 900 + p * 0.5, days: 40, add: { happiness: 0.07 }, mul: { income: 1.05 } },
+      { id: 'decline' },
+    ],
+  },
+  {
+    id: 'fuelcrisis',
+    icon: '⛽',
+    weight: 1,
+    minPop: 700,
+    needs: 'service:coal',
+    options: [
+      { id: 'subsidy', cost: (p) => 1500 + p * 1.2, days: 40, mul: { powerDemand: 0.95 } },
+      { id: 'pass', days: 40, mul: { powerDemand: 1.2, income: 0.97 } },
+    ],
+  },
+  {
+    id: 'techboom',
+    icon: '💻',
+    weight: 1,
+    minPop: 1500,
+    needs: 'density:3',
+    options: [
+      { id: 'incubator', cost: (p) => 3000 + p * 1.5, days: 120, mul: { income: 1.12 }, add: { demandInd: 0.1 } },
+      { id: 'ignore' },
+    ],
+  },
 ];

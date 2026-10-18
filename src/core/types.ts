@@ -8,6 +8,8 @@ export interface Building {
   defId: string;
   /** id зоны ('' для служб) */
   zone: string;
+  /** плотность застройки 1..3 (для зон) */
+  /** плотность застройки 1..3 (у служб — 1) */
   level: number;
   variant: number;
   /** центр, мировые координаты */
@@ -68,6 +70,8 @@ export interface Building {
   conKind: 0 | 1 | 2;
   /** к чему идёт стройка: уровень зоны / маска улучшений */
   conLevel: number;
+  /** благосостояние ★1..3 (внутри плотности `level`) */
+  wealth: number;
   conUp: number;
   /** длительность стройки, секунд игрового времени */
   conDur: number;

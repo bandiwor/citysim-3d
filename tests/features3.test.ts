@@ -589,17 +589,18 @@ describe('стройка по стадиям', () => {
     expect(g.get('construction').active).not.toContain(b);
   });
 
-  it('повышение уровня и улучшение службы идут со стройкой, здание при этом работает', async () => {
+  it('повышение благосостояния (★) и улучшение службы идут со стройкой, здание при этом работает', async () => {
     const g = await cityWithConstruction();
+    g.config.growth.downgradeChance = 0;
     await run(g, 40);
     const house = g.world.list().find((b) => b.kind === 'zone' && b.con >= 1)!;
-    g.builder.beginLevelUp(house, 2);
+    g.builder.beginWealthUp(house, 2);
     expect(house.con).toBe(0);
     expect(house.conKind).toBe(1);
-    expect(house.level).toBe(1);
+    expect(house.wealth).toBe(1);
     expect(isBuilding(house)).toBe(false);
     await run(g, g.config.construction.levelUp + 3);
-    expect(house.level).toBe(2);
+    expect(house.wealth).toBe(2);
     expect(house.con).toBe(1);
     const coal = g.world.list().find((b) => b.defId === 'coal')!;
     await run(g, 40);

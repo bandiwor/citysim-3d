@@ -197,6 +197,17 @@ export const defaultConfig = {
     com: { popRatio: 0.28, gapK: 1.6, base: 0.12, minScale: 40 },
     ind: { gapK: 1.3, base: 0.2, minScale: 60, pollutionK: 0.3 },
   },
+  education: {
+    /** скорость роста образованности (доля разрыва в секунду); высшее образование медленнее в highSlow раз */
+    rate: 0.0016,
+    highSlow: 0.5,
+    /** образованных = покрытие образованием × coverageMul (не больше maxEducated); высшее появляется выше highThreshold */
+    coverageMul: 1.1,
+    maxEducated: 0.92,
+    highThreshold: 0.3,
+    highMul: 1.3,
+    maxHigh: 0.55,
+  },
   stats: {
     interval: 0.5,
     workforceRatio: 0.5,
@@ -336,6 +347,23 @@ export const defaultConfig = {
     ] as { id: string; pop: number; reward: number }[],
     /** население, при котором открывается содержимое: ключи `road:<id>`, `service:<id>`, `tool:<id>`; нет записи — доступно сразу */
     unlocks: {
+      'density:1': 450,
+      'density:2': 2500,
+      'service:well': 60,
+      'service:policepost': 80,
+      'service:firepost': 120,
+      'service:pharmacy': 150,
+      'service:kindergarten': 120,
+      'service:medcenter': 500,
+      'service:garden': 700,
+      'service:sports': 800,
+      'service:highschool': 900,
+      'service:college': 1600,
+      'service:windfarm': 1800,
+      'service:geothermal': 2200,
+      'service:firehelidepot': 2500,
+      'service:desalination': 3000,
+      'service:nuclear': 4000,
       'road:oneway': 100,
       'road:country': 100,
       'road:avenue': 300,

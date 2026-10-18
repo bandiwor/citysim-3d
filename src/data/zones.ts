@@ -1,14 +1,22 @@
 import type { Indexed } from '../core/Registry';
 
+/** Ступень плотности застройки: низкая / средняя / высокая. Выбирается игроком при заливке зоны. */
 export interface ZoneLevel {
-  /** жильцы (жилая зона) или рабочие места (остальные) */
+  /** жильцы (жилая зона) или рабочие места (остальные) при благосостоянии 1 */
   capacity: number;
   floors: [number, number];
-  /** минимальная стоимость земли для апгрейда до этого уровня */
-  reqLand: number;
-  /** минимальное образование района */
-  reqEdu: number;
   pollution: number;
+  /** доли рабочих мест по образованию работников: [без образования, среднее, высшее] (для нежилых зон) */
+  eduMix: [number, number, number];
+}
+
+/** Благосостояние здания внутри плотности (★): богаче — больше вместимость, налоги и приличнее вид. */
+export interface ZoneWealth {
+  capMul: number;
+  taxMul: number;
+  /** минимальная стоимость земли и образование района для перехода на эту ступень */
+  reqLand: number;
+  reqEdu: number;
 }
 
 export interface ZoneType extends Indexed {
@@ -21,35 +29,51 @@ export interface ZoneType extends Indexed {
   powerPer: number;
   waterPer: number;
   cost: number;
+  /** ступени плотности (индекс 0 — низкая) */
   levels: ZoneLevel[];
+  /** ступени благосостояния ★1..★3 */
+  wealth: ZoneWealth[];
 }
+
+const WEALTH: ZoneWealth[] = [
+  { capMul: 1, taxMul: 1, reqLand: 0, reqEdu: 0 },
+  { capMul: 1.2, taxMul: 1.25, reqLand: 0.4, reqEdu: 0.1 },
+  { capMul: 1.45, taxMul: 1.6, reqLand: 0.6, reqEdu: 0.3 },
+];
 
 export const ZONES: ZoneType[] = [
   {
     id: 'res', index: 0, icon: '🏠',
     color: 0x4caf50, housing: true, wage: 24, powerPer: 0.4, waterPer: 0.5, cost: 2,
+    wealth: WEALTH,
     levels: [
-      { capacity: 8, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 0 },
-      { capacity: 26, floors: [3, 5], reqLand: 0.42, reqEdu: 0.1, pollution: 0 },
-      { capacity: 80, floors: [8, 14], reqLand: 0.62, reqEdu: 0.35, pollution: 0 },
+      { capacity: 8, floors: [1, 2], pollution: 0, eduMix: [0, 0, 0] },
+      { capacity: 26, floors: [3, 5], pollution: 0, eduMix: [0, 0, 0] },
+      { capacity: 80, floors: [8, 14], pollution: 0, eduMix: [0, 0, 0] },
     ],
   },
   {
     id: 'com', index: 0, icon: '🏪',
     color: 0x2196f3, housing: false, wage: 26, powerPer: 0.8, waterPer: 0.3, cost: 2,
+    wealth: WEALTH,
     levels: [
-      { capacity: 7, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 0 },
-      { capacity: 24, floors: [3, 5], reqLand: 0.45, reqEdu: 0.1, pollution: 0 },
-      { capacity: 70, floors: [8, 14], reqLand: 0.65, reqEdu: 0.4, pollution: 0 },
+      { capacity: 7, floors: [1, 2], pollution: 0, eduMix: [0.75, 0.25, 0] },
+      { capacity: 24, floors: [3, 5], pollution: 0, eduMix: [0.5, 0.4, 0.1] },
+      { capacity: 70, floors: [8, 14], pollution: 0, eduMix: [0.2, 0.5, 0.3] },
     ],
   },
   {
+    // низкая плотность — мастерские, средняя — заводы, высокая — офисы (нужны образованные работники, не загрязняют)
     id: 'ind', index: 0, icon: '🏭',
     color: 0xffc107, housing: false, wage: 19, powerPer: 1.5, waterPer: 0.6, cost: 2,
+    wealth: WEALTH,
     levels: [
-      { capacity: 12, floors: [1, 2], reqLand: 0, reqEdu: 0, pollution: 1.0 },
-      { capacity: 30, floors: [2, 3], reqLand: 0.35, reqEdu: 0.1, pollution: 0.85 },
-      { capacity: 56, floors: [2, 4], reqLand: 0.55, reqEdu: 0.3, pollution: 0.5 },
+      { capacity: 12, floors: [1, 2], pollution: 1.0, eduMix: [0.75, 0.25, 0] },
+      { capacity: 34, floors: [2, 4], pollution: 0.8, eduMix: [0.5, 0.45, 0.05] },
+      { capacity: 48, floors: [5, 12], pollution: 0, eduMix: [0.05, 0.35, 0.6] },
     ],
   },
 ];
+
+/** Доли рабочих мест по образованию для служб. */
+export const SERVICE_EDU_MIX: [number, number, number] = [0.4, 0.5, 0.1];

@@ -303,7 +303,7 @@ export class UI {
       if (cell?.zone) parts.push(`${t('hover.zone')}: ${t(`zone.${g.zoneTypes.at(cell.zone - 1).id}.name`)}`);
     }
     const b = w.buildingAt(p.x, p.z);
-    if (b) parts.push(b.kind === 'zone' ? `${t(`zone.${b.zone}.name`)} ${t('inspector.level', { n: b.level })}` : t(`service.${b.defId}.name`));
+    if (b) parts.push(b.kind === 'zone' ? `${t(`density.${b.zone}.${b.level - 1}.name`)} ${'★'.repeat(b.wealth)}` : t(`service.${b.defId}.name`));
     this._info.textContent = parts.join(' · ');
   }
 }

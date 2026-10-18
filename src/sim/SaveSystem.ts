@@ -39,6 +39,8 @@ interface SavedCell {
   row: number;
   /** id зоны ('' — нет) */
   zone: string;
+  /** плотность */
+  dn?: number;
 }
 interface SavedBuilding {
   id: number;
@@ -59,6 +61,8 @@ interface SavedBuilding {
   de?: number;
   st?: number;
   up?: number;
+  /** благосостояние */
+  we?: number;
 }
 
 interface SavedRoute {
@@ -92,6 +96,8 @@ export interface SaveData {
   policies?: string[];
   objectives?: { active: Objective[]; completed: number };
   mods?: Modifier[];
+  /** доли образованных: [с образованием, с высшим] */
+  edu?: [number, number];
   event?: { id: string; day: number } | null;
 }
 
@@ -141,6 +147,7 @@ export class SaveSystem implements System {
     pendingState.delete(this._game);
     const g = this._game;
     g.get('progress').restore(d.progress?.peak ?? 0);
+    if (d.edu) g.get('stats').restoreEdu(d.edu[0], d.edu[1]);
     g.get('policy').restore(d.policies ?? []);
     for (const id of g.get('policy').enabled) g.get('policy').refresh(id);
     for (const m of d.mods ?? []) g.get('mods').put(m);
@@ -177,10 +184,10 @@ export class SaveSystem implements System {
       funding: { ...e.funding },
       nodes: [...w.graph.nodes.values()].map((n) => ({ id: n.id, x: r1(n.x), z: r1(n.z), ...(n.light ? { lt: 1 as const } : {}) })),
       edges: [...w.graph.edges.values()].map((ed) => ({ id: ed.id, a: ed.a, b: ed.b, t: g.roadTypes.at(ed.type).id, br: ed.bridge ? 1 : 0, ...(ed.oneway ? { ow: 1 as const } : {}), p: ed.pts.flatMap((p) => [r1(p.x), r1(p.z)]) })),
-      cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone) })),
+      cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone), ...(c.density ? { dn: c.density } : {}) })),
       stops: w.stops.map((s) => ({ id: s.id, x: r1(s.x), z: r1(s.z) })),
       routes: g.get('transit').routes.map((r) => ({ id: r.id, color: r.color, stops: [...r.stops], buses: r.buses, carried: r.carried })),
-      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}) })),
+      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, we: b.wealth, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}) })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
       terrain: [...w.terrainEdits].map(([k, h]) => [k, Math.round(h * 100) / 100] as [number, number]),
       mode: g.config.progress.enabled ? 'career' : 'sandbox',
@@ -188,6 +195,7 @@ export class SaveSystem implements System {
       policies: [...g.get('policy').enabled],
       objectives: { active: g.get('objectives').active, completed: g.get('objectives').completed },
       mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:')),
+      edu: [g.get('stats').eduEducated, g.get('stats').eduHigh],
       event: g.get('events').pending,
     };
   }
@@ -222,7 +230,7 @@ export class SaveSystem implements System {
     }
     for (const c of d.cells) {
       const zone = c.zone ? (g.zoneTypes.get(c.zone)?.index ?? -1) + 1 : 0;
-      w.zones.add({ x: c.x, z: c.z, rot: c.r, tx: c.tx, tz: c.tz, nx: c.nx, nz: c.nz, row: c.row, zone, building: 0, edge: 0, s: 0 }, c.id);
+      w.zones.add({ x: c.x, z: c.z, rot: c.r, tx: c.tx, tz: c.tz, nx: c.nx, nz: c.nz, row: c.row, zone, density: c.dn ?? 0, building: 0, edge: 0, s: 0 }, c.id);
     }
     for (const s of d.stops) {
       const id = s.id ?? w.newId();
@@ -237,6 +245,7 @@ export class SaveSystem implements System {
       const b = g.builder.createBuilding(s.k, s.d, s.x, s.z, s.r, s.w, s.h, s.c);
       b.id = s.id;
       b.level = s.l;
+      b.wealth = s.we ?? 1;
       b.variant = s.v;
       b.up = s.up ?? 0;
       g.builder.applyStats(b);

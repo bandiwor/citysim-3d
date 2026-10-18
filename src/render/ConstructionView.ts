@@ -56,12 +56,12 @@ export class ConstructionView implements View {
   }
 
   /** Высота готового здания по габариту его модели (кэш по виду). */
-  private _height(b: Building, level: number, mask: number): number {
+  private _height(b: Building, wealth: number, mask: number): number {
     const g = this._game;
-    const key = b.kind === 'zone' ? `${b.zone}:${level}:${b.variant}` : `${b.defId}:${mask}`;
+    const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}:${wealth}` : `${b.defId}:${mask}`;
     let h = this._heights.get(key);
     if (h === undefined) {
-      const geo = b.kind === 'zone' ? zoneModel(b.zone, level, b.variant) : (() => {
+      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant, wealth) : (() => {
         const def = g.services.require(b.defId);
         return serviceModel(def.model, def.size[0], def.size[1], installedUpgrades(def, mask).map((u) => u.id));
       })();
@@ -83,8 +83,8 @@ export class ConstructionView implements View {
     for (const b of list) {
       if (k >= MAX) break;
       const fresh = b.conKind === 0;
-      const hNew = this._height(b, fresh ? b.level : b.conKind === 1 ? b.conLevel : b.level, b.conKind === 2 ? b.conUp : b.up);
-      const hOld = fresh ? 0 : this._height(b, b.level, b.up);
+      const hNew = this._height(b, b.conKind === 1 ? b.conLevel : b.wealth, b.conKind === 2 ? b.conUp : b.up);
+      const hOld = fresh ? 0 : this._height(b, b.wealth, b.up);
       const full = Math.max(hNew, hOld);
       this._q.setFromAxisAngle(this._up, b.rot);
       if (fresh) {

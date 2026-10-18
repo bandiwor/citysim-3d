@@ -329,15 +329,15 @@ describe('GrowthSystem', () => {
     expect(growth.happinessOf(house)).toBeGreaterThanOrEqual(0);
   });
 
-  it('смена уровня пересчитывает вместимость и потребности', async () => {
+  it('смена благосостояния пересчитывает вместимость и потребности', async () => {
     const g = await town();
     await run(g, 20);
     const house = g.world.list().find((b) => b.kind === 'zone' && b.zone === 'res')!;
     const cap1 = house.cap;
-    g.builder.setLevel(house, 2);
+    g.builder.setWealth(house, 2);
     expect(house.cap).toBeGreaterThan(cap1);
     expect(house.powerNeed).toBeGreaterThan(0);
-    g.builder.setLevel(house, 1);
+    g.builder.setWealth(house, 1);
     expect(house.cap).toBe(cap1);
   });
 });

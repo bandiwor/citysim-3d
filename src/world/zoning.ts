@@ -49,7 +49,7 @@ export function generateCells(world: World, edge: RoadEdge, cfg: GameConfig): Zo
         const z = p.z + oz * off;
         const rot = yawOf(-ox, -oz);
         if (!cellFits(world, cfg, x, z, rot, edge)) break;
-        added.push(world.zones.add({ x, z, rot, tx: p.tx, tz: p.tz, nx: -ox, nz: -oz, row, zone: 0, building: 0, edge: edge.id, s: (i + 0.5) * spacing }));
+        added.push(world.zones.add({ x, z, rot, tx: p.tx, tz: p.tz, nx: -ox, nz: -oz, row, zone: 0, density: 0, building: 0, edge: edge.id, s: (i + 0.5) * spacing }));
       }
     }
   }

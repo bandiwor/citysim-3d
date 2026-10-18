@@ -49,10 +49,10 @@ export class BuildingView implements View {
   }
 
   private _poolFor(b: Building): InstancePool {
-    const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}` : `${b.defId}:${b.up}`;
+    const key = b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}:${b.wealth}` : `${b.defId}:${b.up}`;
     let pool = this._pools.get(key);
     if (!pool) {
-      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant) : this._serviceGeo(b);
+      const geo = b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant, b.wealth) : this._serviceGeo(b);
       pool = new InstancePool(geo, this.materials.material, b.kind === 'zone' ? 2600 : 200);
       this._pools.set(key, pool);
       this._scene.add(pool.mesh);

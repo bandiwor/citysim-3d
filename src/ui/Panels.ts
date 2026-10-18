@@ -99,12 +99,17 @@ export class Inspector {
       const z = g.zoneTypes.require(b.zone);
       title = `${t(`zone.${z.id}.name`)}`;
       icon = z.icon;
-      const next = z.levels[b.level];
-      row(t('inspector.levelRow'), h('span', { class: 'v stars', text: `${'★'.repeat(b.level)}${'☆'.repeat(z.levels.length - b.level)}  ${b.level}/${z.levels.length}` }));
+      const next = z.wealth[b.wealth];
+      row(t('inspector.density'), t(`density.${z.id}.${b.level - 1}.name`));
+      row(t('inspector.levelRow'), h('span', { class: 'v stars', text: `${'★'.repeat(b.wealth)}${'☆'.repeat(z.wealth.length - b.wealth)}  ${b.wealth}/${z.wealth.length}` }));
       if (next) row(t('inspector.nextLevel'), t('inspector.nextReq', { land: fmtPercent(next.reqLand), edu: fmtPercent(next.reqEdu) }));
       else row(t('inspector.nextLevel'), t('inspector.maxLevel'));
       if (z.housing) row(t('inspector.residents'), `${fmtNumber(b.pop)} / ${fmtNumber(b.cap)}`);
-      else row(t('inspector.workers'), `${fmtNumber(b.workers)} / ${fmtNumber(b.jobs)}`);
+      else {
+        row(t('inspector.workers'), `${fmtNumber(b.workers)} / ${fmtNumber(b.jobs)}`);
+        const mix = z.levels[b.level - 1].eduMix;
+        row(t('inspector.jobsEdu'), `${Math.round(mix[0] * 100)}% · ${Math.round(mix[1] * 100)}% · ${Math.round(mix[2] * 100)}%`);
+      }
       if (z.housing) row(t('inspector.employed'), fmtPercent(1 - g.get('stats').unemployment));
       if (z.id === 'com') row(t('inspector.goods'), fmtPercent(b.goods));
       row(t('inspector.happiness'), bar(b.happiness));
@@ -266,6 +271,7 @@ export function statsBody(game: Game): { el: HTMLElement; tick(): void } {
       kv(t('stats.unemployment'), fmtPercent(st.unemployment)),
       kv(t('stats.happiness'), fmtPercent(st.happiness)),
       kv(t('stats.education'), fmtPercent(st.education)),
+      kv(t('stats.schooling'), `${fmtPercent(1 - st.eduEducated)} · ${fmtPercent(st.eduEducated - st.eduHigh)} · ${fmtPercent(st.eduHigh)}`),
       kv(t('stats.crime'), fmtPercent(st.crime)),
       kv(t('stats.pollution'), fmtPercent(st.pollution)),
       kv(t('stats.traffic'), fmtPercent(st.trafficFlow)),

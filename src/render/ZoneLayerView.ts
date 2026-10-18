@@ -5,6 +5,7 @@ import { CellLayer } from './CellLayer';
 import type { View } from './View';
 
 const CAPACITY = 24000;
+const WHITE = new Color(0xffffff);
 
 function outlineTexture(): CanvasTexture {
   const c = document.createElement('canvas');
@@ -66,7 +67,8 @@ export class ZoneLayerView implements View {
       if (c.zone && nz < CAPACITY) {
         this._m.compose(this._p.set(c.x, 0.1, c.z), this._q, this._s);
         this._zoned.setMatrixAt(nz, this._m);
-        this._zoned.setColorAt(nz++, this._col.setHex(this._game.zoneTypes.at(c.zone - 1).color));
+        // плотность: средняя светлее, высокая ещё светлее
+        this._zoned.setColorAt(nz++, this._col.setHex(this._game.zoneTypes.at(c.zone - 1).color).lerp(WHITE, c.density * 0.28));
       }
     }
     this._zoned.count = nz;

@@ -126,8 +126,8 @@ export function registerOverlays(g: Game): void {
     paint(game, p) {
       paintBuilding(game, p, (b) => {
         if (b.kind === 'zone') {
-          const max = game.zoneTypes.require(b.zone).levels.length;
-          return goodBad((b.level - 1) / Math.max(1, max - 1), 200);
+          const max = game.zoneTypes.require(b.zone).wealth.length;
+          return goodBad((b.wealth - 1) / Math.max(1, max - 1), 200);
         }
         const lv = game.builder.serviceLevel(b);
         return lv.max > 1 ? goodBad((lv.level - 1) / (lv.max - 1), 200) : null;
