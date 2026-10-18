@@ -1,5 +1,6 @@
 import { CELL } from '../config/constants';
 import type { Game, OverlayPainter } from '../core/Game';
+import { RESOURCE_KINDS, SPECS } from '../data/resources';
 
 type Rgba = [number, number, number, number];
 
@@ -132,6 +133,35 @@ export function registerOverlays(g: Game): void {
         const lv = game.builder.serviceLevel(b);
         return lv.max > 1 ? goodBad((lv.level - 1) / (lv.max - 1), 200) : null;
       });
+    },
+  });
+}
+
+/** Карта природных ресурсов: цвет — самый богатый ресурс клетки, насыщенность — его запас; плюс отметки специализированных предприятий. */
+export function registerResourceOverlay(g: Game): void {
+  g.overlays.add({
+    id: 'resources',
+    icon: '⛏️',
+    paint(game, p) {
+      const res = game.get('resources');
+      const w = game.world;
+      const colors = Object.fromEntries(SPECS.map((s) => [s.resource, s.color])) as Record<string, number>;
+      for (let i = 0; i < w.cells; i++) {
+        if (w.terrain[i] === 1) continue;
+        let best = 0;
+        let kind = '';
+        for (const k of RESOURCE_KINDS) {
+          const v = res.maps[k][i];
+          if (v > best) {
+            best = v;
+            kind = k;
+          }
+        }
+        if (best < 0.15) continue;
+        const c = colors[kind];
+        p.set(i, (c >> 16) & 255, (c >> 8) & 255, c & 255, Math.round(40 + best * 170));
+      }
+      paintBuilding(game, p, (b) => (b.spec ? [255, 255, 255, 200] : null));
     },
   });
 }

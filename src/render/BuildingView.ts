@@ -60,7 +60,7 @@ export class BuildingView implements View {
   }
 
   private _key(b: Building): string {
-    return b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}:${b.wealth}` : `${b.defId}:${b.up}`;
+    return b.kind === 'zone' ? `${b.zone}:${b.level}:${b.variant}:${b.wealth}:${b.spec}` : `${b.defId}:${b.up}`;
   }
 
   /** Пул модели нужной детализации (ближняя и дальняя модели строятся лениво, по мере надобности). */
@@ -72,7 +72,7 @@ export class BuildingView implements View {
     }
     let pool = pair[lod];
     if (!pool) {
-      const geo = withLod(lod, () => (b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant, b.wealth) : this._serviceGeo(b)));
+      const geo = withLod(lod, () => (b.kind === 'zone' ? zoneModel(b.zone, b.level, b.variant, b.wealth, b.spec) : this._serviceGeo(b)));
       pool = new InstancePool(geo, this.materials.material, b.kind === 'zone' ? 2600 : 200);
       // тени отбрасывают обе модели: у упрощённой они те же, но дешевле
       pair[lod] = pool;
@@ -96,7 +96,7 @@ export class BuildingView implements View {
 
   private _tint(b: Building): number {
     if (b.abandoned) return ABANDONED;
-    if (b.kind === 'service') return PLAIN;
+    if (b.kind === 'service' || b.spec) return PLAIN;
     const list = TINTS[b.zone] ?? [PLAIN];
     return list[(b.id * 2654435761) % list.length >>> 0] ?? PLAIN;
   }

@@ -12,6 +12,10 @@ export interface System {
   init?(game: Game): void;
   update?(dt: number, realDt: number): void;
   dispose?(): void;
+  /** состояние механики для сохранения (JSON); не задано — механика ничего не хранит */
+  saveState?(): unknown;
+  /** восстановление из сохранения (вызывается после init, в первом кадре загруженной игры) */
+  loadState?(data: unknown): void;
 }
 
 /** «Фича» — пакет данных, систем, инструментов и оверлеев, который подключается одной строкой. */

@@ -92,6 +92,8 @@ export const TOOL_ICONS: Record<string, string> = {
   'service:opera': 'opera',
   'service:ferriswheel': 'ferriswheel',
   // транспорт
+  'service:hotel': 'hotel',
+  'service:touristinfo': 'touristinfo',
   'service:taxidepot': 'taxi',
   'service:busdepot': 'busdepot',
   stop: 'stop',
@@ -137,6 +139,9 @@ export const UI_ICONS = {
   power: 'bolt',
   water: 'drop',
   level: 'city',
+  trade: 'trade',
+  tourism: 'tourism',
+  weather: { clear: 'weather-clear', cloudy: 'weather-cloudy', rain: 'weather-rain', storm: 'weather-storm', snow: 'weather-snow', heat: 'weather-heat', fog: 'weather-fog' },
   touch: {
     hide: 'eye',
     exit: 'exit',

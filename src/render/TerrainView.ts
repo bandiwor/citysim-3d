@@ -1,3 +1,4 @@
+import { withSnow } from './snow';
 import {
   BufferGeometry,
   Color,
@@ -70,6 +71,7 @@ export class TerrainView {
     geo.computeVertexNormals();
     this._geo = geo;
     this.mesh = new Mesh(geo, new MeshLambertMaterial({ vertexColors: true }));
+    withSnow(this.mesh.material as MeshLambertMaterial);
     this.mesh.receiveShadow = true;
     scene.add(this.mesh);
 

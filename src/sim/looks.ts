@@ -33,7 +33,8 @@ function rnd(seed: number, k: number): number {
 
 const pick = <T>(arr: T[], r: number): T => arr[Math.min(arr.length - 1, Math.floor(r * arr.length))];
 
-export function lookOf(seed: number): Look {
+/** Внешность по зерну; турист — в панаме, яркой рубашке и с рюкзаком. */
+export function lookOf(seed: number, tourist = false): Look {
   const r = (k: number): number => rnd(seed, k);
   const k = r(0);
   const kind: Look['kind'] = k < 0.14 ? 1 : k < 0.3 ? 2 : 0;
@@ -50,5 +51,6 @@ export function lookOf(seed: number): Look {
     bald: kind !== 1 && r(10) < 0.08,
     height: kind === 1 ? 0.62 + r(11) * 0.1 : kind === 2 ? 0.92 + r(11) * 0.06 : 0.94 + r(11) * 0.14,
     speed: kind === 1 ? 1.1 : kind === 2 ? 0.7 : 1,
+    ...(tourist ? { hat: 2 as const, hatColor: pick([0xf2e3b0, 0xffffff, 0xf2c230], r(12)), bag: true, shirt: pick([0xff8a3c, 0x3cc8d8, 0xf2c230, 0xff6fa0, 0x6fd06a], r(13)), speed: 0.75 } : {}),
   };
 }

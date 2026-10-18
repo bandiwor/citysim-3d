@@ -109,6 +109,11 @@ export class Game {
     return this._byId.get(id as string) as unknown as SystemMap[K];
   }
 
+  /** Все механики (в порядке обновления). */
+  systems(): readonly System[] {
+    return this._systems;
+  }
+
   addCategory(cat: ToolbarCategory): void {
     if (this.categories.some((c) => c.id === cat.id)) return;
     this.categories.push(cat);

@@ -1,3 +1,4 @@
+import { resourcesFeature, tourismFeature, tradeFeature, weatherFeature } from '../src/features/living';
 import type { DeepPartial, GameConfig } from '../src/config/gameConfig';
 import { Game } from '../src/core/Game';
 import { coreFeature, disastersFeature, natureFeature, roadsFeature, servicesFeature, trafficFeature, zonesFeature } from '../src/features';
@@ -15,7 +16,7 @@ export interface TestGameOptions {
 export function createGame(o: TestGameOptions = {}): Game {
   const size = o.size ?? 60;
   const game = new Game({ seed: 1, terrain: flatTerrain(size), config: { disasters: { enabled: false }, progress: { enabled: false }, construction: { enabled: false }, ...o.config } });
-  game.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(natureFeature).use(disastersFeature);
+  game.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(natureFeature).use(disastersFeature).use(weatherFeature).use(resourcesFeature).use(tradeFeature).use(tourismFeature);
   if (o.start !== false) {
     game.start();
     game.get('economy').money = o.money ?? 1e9;

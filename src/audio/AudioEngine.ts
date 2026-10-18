@@ -223,6 +223,16 @@ export class AudioEngine {
       return g;
     };
 
+    // дождь: шелест высоких частот + мягкий «шум капель» пониже
+    const rain = layerGain('rain');
+    const hiss = this._filtered('white', 'highpass', 1400, 0.5);
+    const hissGain = ctx.createGain();
+    hissGain.gain.value = 0.35;
+    hiss.out.connect(hissGain).connect(rain);
+    const patter = this._filtered('pink', 'bandpass', 700, 0.6);
+    patter.out.connect(rain);
+    this._lfo(0.17, 0.12, hissGain.gain);
+
     // город: низкий гул + два расстроенных тона
     const city = layerGain('city');
     const rumble = this._filtered('brown', 'lowpass', 380);
@@ -549,6 +559,11 @@ export class AudioEngine {
         break;
       case 'msg.info':
         this._tone(bus, { freq: 990, dur: 0.1, vol: 0.06 });
+        break;
+      case 'thunder':
+        // раскат: низкий шумовой удар с долгим затуханием
+        this._burst(this._buses.ambient, { dur: 2.4, from: 420, to: 50, vol: 0.55, type: 'lowpass' });
+        this._tone(this._buses.ambient, { freq: 48, to: 28, dur: 1.8, vol: 0.3 });
         break;
       default:
         break;

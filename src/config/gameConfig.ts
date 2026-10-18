@@ -57,8 +57,6 @@ export const defaultConfig = {
     /** доход с излишков энергии и воды, за единицу в месяц */
     /** прибавка к налогам от одной мэрии (максимум +10% суммарно) */
     townhallBonus: 0.05,
-    powerExport: 0.15,
-    waterExport: 0.05,
     stopCost: 250,
     stopUpkeep: 8,
     busUpkeep: 30,
@@ -362,6 +360,8 @@ export const defaultConfig = {
       'density:1': 450,
       'density:2': 2500,
       'service:well': 60,
+      'service:touristinfo': 600,
+      'service:hotel': 900,
       'service:policepost': 80,
       'service:firepost': 120,
       'service:pharmacy': 150,
@@ -535,6 +535,56 @@ export const defaultConfig = {
     minFires: 3,
     maxFireShare: 0.12,
     burnTime: 16,
+  },
+  weather: {
+    /** сколько игровых дней длится погода (мин–макс) */
+    spellDays: [2, 6] as [number, number],
+    /** вероятности погоды по сезонам: зима, весна, лето, осень */
+    chances: {
+      winter: { clear: 0.3, cloudy: 0.25, snow: 0.35, fog: 0.1 },
+      spring: { clear: 0.4, cloudy: 0.25, rain: 0.25, storm: 0.05, fog: 0.05 },
+      summer: { clear: 0.5, cloudy: 0.15, rain: 0.12, storm: 0.08, heat: 0.15 },
+      autumn: { clear: 0.3, cloudy: 0.3, rain: 0.28, storm: 0.04, fog: 0.08 },
+    } as Record<string, Record<string, number>>,
+    /** средняя температура сезона, °C */
+    seasonTemp: { winter: -5, spring: 11, summer: 24, autumn: 9 } as Record<string, number>,
+    /** скорость накопления и таяния снега (доля покрова в игровую секунду) */
+    snowRate: 0.02,
+    meltRate: 0.012,
+  },
+  trade: {
+    /** узел дороги ближе этого расстояния к краю карты — выезд к соседям, ед. */
+    edgeRange: 18,
+    /** цена продажи / покупки единицы в месяц */
+    powerSell: 0.15,
+    waterSell: 0.05,
+    powerBuy: 0.45,
+    waterBuy: 0.15,
+    /** предел импорта на каждый выезд */
+    importPerLink: { power: 600, water: 900 },
+    /** экспорт сырья специализированной промышленностью: $ за работника в месяц (умножается на ценность ресурса) */
+    goodsPerWorker: 1.2,
+    /** прибавка к спросу при наличии выездов */
+    demandInd: 0.08,
+    demandCom: 0.04,
+  },
+  tourism: {
+    /** туристов в месяц на единицу привлекательности */
+    perPoint: 14,
+    /** выручка с туриста, $ */
+    spend: 7,
+    /** мест для туристов в коммерческих зданиях уровня 2+ (на 10 работников) */
+    comBeds: 2,
+    /** прибавка к спросу коммерции на каждые 1000 туристов в месяц */
+    demandComPer1000: 0.05,
+  },
+  resources: {
+    /** порог ресурса в клетке, при котором промышленность специализируется */
+    threshold: 0.38,
+    /** сколько руды/нефти извлекает работник за месяц (доля запаса клетки) */
+    depletion: 0.0009,
+    /** радиус добычи вокруг шахты/вышки, клеток */
+    radius: 2,
   },
   save: {
     key: 'citysim3d.save.v2',

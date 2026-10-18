@@ -1,3 +1,4 @@
+import { eduMixOf } from '../data/resources';
 import { isBuilding, isIdle } from '../core/types';
 import type { Game } from '../core/Game';
 import { SERVICE_EDU_MIX } from '../data/zones';
@@ -110,7 +111,7 @@ export class StatsSystem implements System {
           if (b.zone === 'com') jc += b.jobs;
           else if (b.zone === 'ind') ji += b.jobs;
           else jo += b.jobs;
-          const mix = g.zoneTypes.require(b.zone).levels[b.level - 1].eduMix;
+          const mix = eduMixOf(b, g.zoneTypes.require(b.zone).levels[b.level - 1].eduMix);
           for (let k = 0; k < 3; k++) jobsEdu[k] += b.jobs * mix[k];
         }
       } else if (live) {
@@ -158,7 +159,7 @@ export class StatsSystem implements System {
         b.workers = 0;
         continue;
       }
-      const mix = b.kind === 'zone' ? g.zoneTypes.require(b.zone).levels[b.level - 1].eduMix : SERVICE_EDU_MIX;
+      const mix = b.kind === 'zone' ? eduMixOf(b, g.zoneTypes.require(b.zone).levels[b.level - 1].eduMix) : SERVICE_EDU_MIX;
       b.workers = Math.round(b.jobs * (mix[0] * f0 + mix[1] * f1 + mix[2] * f2));
     }
   }

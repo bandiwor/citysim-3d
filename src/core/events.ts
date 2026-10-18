@@ -23,10 +23,14 @@ export interface GameEvents {
   'tool:unlocked': void;
   /** цели обновились */
   'objectives:changed': void;
+  /** здание зоны вот-вот появится (поля ещё можно поменять: специализация, вариант) */
+  'building:spawning': Building;
   'building:added': Building;
   'building:removed': Building;
   'building:updated': Building;
   'time:day': void;
+  'weather:changed': string;
+  'trade:changed': void;
   'time:month': void;
   'time:year': void;
   /** сообщение игроку: ключ словаря i18n + параметры */

@@ -1,3 +1,4 @@
+import { SNOW } from './snow';
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3, type Scene } from 'three';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
@@ -141,7 +142,7 @@ export class GrassView implements View {
     const level = graphics.get().grass;
     const f = this._focus();
     const w = this._game.world;
-    if (level === 0 || f.distance > 170) {
+    if (level === 0 || f.distance > 170 || SNOW.value > 0.35) {
       this._mesh.count = 0;
       this._lastLevel = level;
       this._dirty = true;

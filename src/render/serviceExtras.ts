@@ -360,3 +360,46 @@ serviceModels.set('opera', () => {
   b.box(14, 0.5, 2.4, 0, 4.2, 6.5, 0xd6b24a);
   return b.build();
 });
+
+// ---------------- туризм ----------------
+
+serviceModels.set('hotel', () => {
+  const b = new GeomBuilder().box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0x8d9296);
+  // башня отеля с балконами, лобби со стеклянным фасадом и навесом, вывеска на крыше
+  b.box(9, 18, 6, 0, 0.2, -2.5, 0xf2e6d6, { windows: true }).box(9.4, 0.6, 6.4, 0, 18.2, -2.5, 0xb88a5a);
+  for (let f = 1; f < 6; f++) b.box(9.2, 0.18, 0.7, 0, 0.2 + f * 3, 0.85, 0xe9dcc8, { detail: true });
+  b.box(12, 4, 4.6, 0, 0.2, 4.2, 0xdfe6ec, { windows: true }).box(6, 0.3, 2.4, 0, 3.6, 7.6, 0xb84a3a);
+  for (const x of [-2.6, 2.6]) b.cylinder(0.12, 0.12, 3.4, x, 0.2, 8.5, 0xd9d2c0, 6);
+  b.box(6, 1.6, 0.3, 0, 18.8, -0.9, 0xd8b04a).box(5.4, 1.1, 0.32, 0, 19.05, -0.9, 0xb84a3a);
+  b.detailed(() => {
+    for (const x of [-5.5, 5.5]) b.box(1, 0.5, 1, x, 0.2, 7.2, 0x9a8c74).sphere(0.55, x, 0.6, 7.2, 0x4a9a4e, {}, 7, 5);
+    b.box(10, 0.06, 1.4, 0, 0.2, 8.8, 0xb84a3a);
+  });
+  return b.build();
+});
+
+serviceModels.set('touristinfo', () => {
+  const b = new GeomBuilder().box(CELL - 1, 0.18, CELL - 1, 0, 0, 0, 0xcdbf9c);
+  // павильон с большой буквой «i», карта-стенд и флаги
+  b.box(4.4, 3, 3.4, 0, 0.18, -0.8, 0xeef2f5, { windows: true }).prism(5, 4, 1.4, 0, 3.18, -0.8, 0x2f7de1);
+  b.box(1.2, 1.2, 0.2, 0, 1.4, 1.0, 0x2f7de1).box(0.2, 0.7, 0.22, 0, 1.55, 1.02, 0xffffff).box(0.2, 0.15, 0.22, 0, 2.35, 1.02, 0xffffff);
+  b.box(1.8, 1.3, 0.12, 2.2, 0.9, 2.3, 0x4a90d9).box(0.12, 0.9, 0.12, 2.2, 0.18, 2.3, 0x3a3f46);
+  for (const [x, c] of [[-2.4, 0xd8433a], [-1.6, 0x2e9e5b]] as [number, number][]) b.cylinder(0.05, 0.06, 3.6, x, 0.18, 2.6, 0xd9dde2, 6).box(0.9, 0.55, 0.04, x + 0.47, 3.1, 2.6, c);
+  return b.build();
+});
+
+up('hotel.pool', (b) => b.box(5.6, 0.25, 3, -2.2, 0.2, 8.4, 0xdfe6ec).box(4.8, 0.3, 2.2, -2.2, 0.2, 8.4, 0x4aa3d8).box(0.8, 1.2, 0.8, 1.6, 0.2, 8.4, 0xf2c230));
+up('hotel.wing', (b) => b.box(4, 11, 5, 6.6, 0.2, -2.5, 0xf2e6d6, { windows: true }).box(4.3, 0.5, 5.3, 6.6, 11.2, -2.5, 0xb88a5a));
+up('hotel.spa', (b) => b.box(3.6, 2.6, 3.2, -6.4, 0.2, -2.5, 0xe0d4c0, { windows: true }).sphere(1.5, -6.4, 2.2, -2.5, 0x9fd4c4));
+up('touristinfo.tours', (b) => b.box(3, 1.2, 1.4, -1.6, 0.4, 2.8, 0xf2c230).box(2.6, 0.5, 1.3, -1.6, 1.6, 2.8, 0x2a3b57));
+up('monument.lights', (b) => {
+  for (const [x, z] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) b.cylinder(0.12, 0.15, 3, x, 0.2, z, 0x3a3f46, 6).box(0.5, 0.4, 0.5, x, 3.2, z, 0xfff3b0);
+});
+up('ferriswheel.lights', (b) => {
+  // гирлянды по опорам и над павильоном
+  for (const [x, z] of [[-2.2, -3], [2.2, -3], [-2.2, 3], [2.2, 3]]) for (let k = 0; k < 5; k++) b.sphere(0.2, x + (x < 0 ? -0.4 : 0.4), 1.5 + k * 2.2, z, [0xffd23a, 0xff5f8f, 0x5fd0ff][k % 3], {}, 6, 4);
+  for (let i = 0; i < 9; i++) b.sphere(0.18, -4 + i, 3.9, 10.75, [0xffd23a, 0xff5f8f, 0x5fd0ff][i % 3], {}, 6, 4);
+});
+up('opera.festival', (b) => {
+  for (const [x, c] of [[-6, 0xd8433a], [-3, 0xf2c230], [3, 0x2e9e5b], [6, 0x2f7de1]] as [number, number][]) b.cylinder(0.06, 0.08, 6, x, 0.2, 9.5, 0xd9dde2, 6).box(1.2, 2.2, 0.05, x + 0.62, 3.6, 9.5, c);
+});

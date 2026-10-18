@@ -56,6 +56,7 @@ export const TOOLBAR_LAYOUT: Record<string, string[][]> = {
   landmarks: [
     ['service:townhall', 'service:clocktower', 'service:monument', 'service:obelisk', 'service:arch'],
     ['service:cathedral', 'service:opera', 'service:tvtower', 'service:ferriswheel'],
+    ['service:touristinfo', 'service:hotel'],
   ],
   transit: [
     ['service:busdepot', 'stop', 'route'],

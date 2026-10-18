@@ -1,3 +1,4 @@
+import { withSnow } from './snow';
 import { Color, Matrix4, MeshLambertMaterial, Quaternion, Vector3, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import { PROPS } from '../data/props';
@@ -21,6 +22,7 @@ export class PropView implements View {
 
   constructor(scene: Scene, private _game: Game) {
     const mat = new MeshLambertMaterial({ vertexColors: true });
+    withSnow(mat, 0.8);
     for (const d of PROPS) {
       const pool = new InstancePool(propModel(d.id), mat, LIMIT);
       this._pools.set(d.id, pool);

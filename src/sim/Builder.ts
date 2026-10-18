@@ -1,3 +1,4 @@
+import { specDef } from '../data/resources';
 import { effectiveDef } from '../data/services';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
@@ -721,6 +722,9 @@ export class Builder {
     this.applyStats(b);
     b.access = cell.edge;
     b.accessS = cell.s;
+    // механики (природные ресурсы и др.) могут уточнить здание до появления
+    this._game.bus.emit('building:spawning', b);
+    this.applyStats(b);
     this.beginBuild(b);
     this.addBuilding(b);
     return b;
@@ -775,6 +779,7 @@ export class Builder {
       wealth: 1,
       conUp: 0,
       conDur: 0,
+      spec: '',
     };
     this.applyStats(b);
     return b;
@@ -788,7 +793,7 @@ export class Builder {
       const lv = z.levels[b.level - 1];
       const cap = Math.round(lv.capacity * z.wealth[b.wealth - 1].capMul);
       b.cap = z.housing ? cap : 0;
-      b.jobs = z.housing ? 0 : cap;
+      b.jobs = z.housing ? 0 : Math.round(cap * (b.spec ? (specDef(b.spec)?.jobs ?? 1) : 1));
       b.powerNeed = cap * z.powerPer;
       b.waterNeed = cap * z.waterPer;
     } else {

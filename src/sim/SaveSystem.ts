@@ -64,6 +64,8 @@ interface SavedBuilding {
   up?: number;
   /** благосостояние */
   we?: number;
+  /** специализация промышленности (ферма, лесопилка, шахта, нефть) */
+  sp?: string;
 }
 
 interface SavedRoute {
@@ -107,6 +109,8 @@ export interface SaveData {
   props?: [string, number, number, number, number][];
   et?: number[];
   event?: { id: string; day: number } | null;
+  /** состояние механик с saveState/loadState (погода, торговля, туризм, ресурсы…) по id */
+  ext?: Record<string, unknown>;
 }
 
 /** Маршруты из сохранения, ожидающие запуска игры. */
@@ -114,6 +118,9 @@ const pendingRoutes = new WeakMap<Game, SavedRoute[]>();
 const pendingState = new WeakMap<Game, SaveData>();
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
+
+/** модификаторы, которые механики выставляют сами после загрузки (не сохраняются) */
+const SYSTEM_MODS = new Set(['season', 'weather', 'trade', 'tourism']);
 
 /** Сохранение в localStorage. Формат явный и не зависит от имён внутренних полей. */
 export class SaveSystem implements System {
@@ -159,6 +166,7 @@ export class SaveSystem implements System {
     g.get('policy').restore(d.policies ?? []);
     for (const id of g.get('policy').enabled) g.get('policy').refresh(id);
     for (const m of d.mods ?? []) g.get('mods').put(m);
+    for (const s of g.systems()) if (s.loadState && d.ext && s.id in d.ext) s.loadState(d.ext[s.id]);
     const ob = g.get('objectives');
     ob.active = (d.objectives?.active ?? []).filter((o) => o && typeof o.kind === 'string');
     ob.completed = d.objectives?.completed ?? 0;
@@ -195,20 +203,21 @@ export class SaveSystem implements System {
       cells: w.zones.list().map((c) => ({ id: c.id, x: r1(c.x), z: r1(c.z), r: Math.round(c.rot * 1000) / 1000, tx: r1(c.tx * 100) / 100, tz: r1(c.tz * 100) / 100, nx: r1(c.nx * 100) / 100, nz: r1(c.nz * 100) / 100, row: c.row, zone: zoneId(c.zone), ...(c.density ? { dn: c.density } : {}) })),
       stops: w.stops.map((s) => ({ id: s.id, x: r1(s.x), z: r1(s.z) })),
       routes: g.get('transit').routes.map((r) => ({ id: r.id, color: r.color, stops: [...r.stops], buses: r.buses, carried: r.carried })),
-      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, we: b.wealth, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}) })),
+      buildings: w.list().map((b) => ({ id: b.id, k: b.kind, d: b.defId, x: r1(b.x), z: r1(b.z), r: Math.round(b.rot * 1000) / 1000, w: b.w, h: b.d, c: b.cell, l: b.level, we: b.wealth, v: b.variant, p: Math.round(b.pop), g: b.goods, a: b.abandoned ? 1 : 0, ga: Math.round(b.garbage * 10) / 10, de: b.dead, st: Math.round(b.stored), ...(b.up ? { up: b.up } : {}), ...(b.spec ? { sp: b.spec } : {}) })),
       history: { net: e.history.net, pop: e.history.pop, money: e.history.money },
       terrain: [...w.terrainEdits].map(([k, h]) => [k, Math.round(h * 100) / 100] as [number, number]),
       mode: g.config.progress.enabled ? 'career' : 'sandbox',
       progress: { peak: g.get('progress').peakPop },
       policies: [...g.get('policy').enabled],
       objectives: { active: g.get('objectives').active, completed: g.get('objectives').completed },
-      mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:')),
+      mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:') && !SYSTEM_MODS.has(m.id)),
       ...(g.terrainStyle ? { ts: g.terrainStyle } : {}),
       ...(anyCheat(g.cheats) ? { ch: g.cheats } : {}),
       edu: [g.get('stats').eduEducated, g.get('stats').eduHigh],
       ...(w.props.size ? { props: [...w.props.values()].map((p) => [p.kind, r1(p.x), r1(p.z), Math.round(p.s * 100) / 100, Math.round(p.rot * 100) / 100] as [string, number, number, number, number]) } : {}),
       ...(w.erasedTrees.size ? { et: [...w.erasedTrees] } : {}),
       event: g.get('events').pending,
+      ext: Object.fromEntries(g.systems().flatMap((s) => (s.saveState ? [[s.id, s.saveState()]] : []))),
     };
   }
 
@@ -262,6 +271,7 @@ export class SaveSystem implements System {
       b.level = s.l;
       b.wealth = s.we ?? 1;
       b.variant = s.v;
+      b.spec = s.sp ?? '';
       b.up = s.up ?? 0;
       g.builder.applyStats(b);
       b.pop = Math.min(s.p, b.cap);

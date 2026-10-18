@@ -193,3 +193,56 @@ strong {
   margin: 6px 3px;
   background: linear-gradient(180deg, transparent, rgba(160, 190, 230, 0.32) 20%, rgba(160, 190, 230, 0.32) 80%, transparent);
 }
+/* погода у часов */
+.clock-w {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.clock-w .ico {
+  width: 22px;
+  height: 22px;
+}
+@media (pointer: coarse) {
+  .clock-w .ico {
+    width: 16px;
+    height: 16px;
+  }
+  .clock-w {
+    padding-left: 6px;
+    font-size: 12px;
+  }
+}
+/* окна соседей и туризма */
+.trade,
+.tourism {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(520px, 88vw);
+  max-height: 72vh;
+  overflow-y: auto;
+}
+.trade-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trade .trow.pos span:last-child,
+.tourism .trow.pos span:last-child {
+  color: var(--good);
+}
+.trade .trow.neg span:last-child,
+.tourism .trow.neg span:last-child {
+  color: var(--bad);
+}
+.trade-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 6px;
+}

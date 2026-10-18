@@ -1,3 +1,4 @@
+import { withSnow } from './snow';
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, MeshLambertMaterial, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import type { RoadEdge, RoadGraph, RoadNode } from '../world/RoadGraph';
@@ -213,6 +214,8 @@ export class RoadView implements View {
 
   constructor(scene: Scene, private _game: Game) {
     this._mesh = new Mesh(new BufferGeometry(), new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }));
+    // дороги чистят: снег только по краям лёгким налётом
+    withSnow(this._mesh.material as MeshLambertMaterial, 0.18);
     this._mesh.receiveShadow = true;
     this._mesh.frustumCulled = false;
     scene.add(this._mesh);

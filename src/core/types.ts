@@ -75,6 +75,8 @@ export interface Building {
   conUp: number;
   /** длительность стройки, секунд игрового времени */
   conDur: number;
+  /** специализация промышленности по природному ресурсу ('' — обычная): farm, forest, ore, oil */
+  spec: string;
 }
 
 export interface BusStop {

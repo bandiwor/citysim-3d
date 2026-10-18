@@ -8,6 +8,7 @@ import { graphics } from '../render/graphics';
 import { pwa } from '../pwa';
 import { h } from './dom';
 import { icon } from './icons';
+import { tourismBody, tradeBody } from './RegionPanels';
 import { UI_ICONS } from './icons/map';
 import { keys } from './keybinds';
 import { Clock, Hud } from './Hud';
@@ -157,6 +158,8 @@ export class UI {
       policies: () => this.openPolicies(),
       advisor: (btn) => this._toggleAdvisor(btn),
       event: () => this.openEvent(),
+      trade: () => this.openTrade(),
+      tourism: () => this.openTourism(),
     });
     const clock = new Clock(g);
     const toolbar = new Toolbar(g, () => this.input.tool);
@@ -251,6 +254,18 @@ export class UI {
     if (this._tb.mode) this._tb.mode.replaceChildren(icon(this.input.touchDraw ? UI_ICONS.touch.draw : UI_ICONS.touch.camera, this.input.touchDraw ? '✏️' : '✋'));
     this._tb.hide?.classList.toggle('on', document.body.classList.contains('ui-min'));
     document.body.classList.toggle('tool-on', active);
+  }
+
+  openTrade(): void {
+    const b = tradeBody(this._game, (x, z) => this._renderer.camera.focus(x, z));
+    this._eventOpen = false;
+    this._modal.open(t('modal.trade'), b.el, () => b.tick());
+  }
+
+  openTourism(): void {
+    const b = tourismBody(this._game, (x, z) => this._renderer.camera.focus(x, z));
+    this._eventOpen = false;
+    this._modal.open(t('modal.tourism'), b.el, () => b.tick());
   }
 
   openGoals(): void {

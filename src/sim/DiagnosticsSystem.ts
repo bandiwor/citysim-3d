@@ -113,7 +113,7 @@ export class DiagnosticsSystem implements System {
     if (b.net < 0) {
       const months = eco.money > 0 ? Math.floor(eco.money / -b.net) : 0;
       out.push({ sev: b.net * 6 > -eco.money && eco.money < -b.net * 6 ? 'bad' : 'warn', icon: '📉', key: 'deficit', params: { n: fmt(-b.net), income: fmt(b.incomeTotal), expense: fmt(b.expenseTotal), months: months >= 60 ? '60+' : months } });
-      const lines: [string, number][] = [['roads', b.expense.roads], ['services', b.expense.services], ['transit', b.expense.transit], ['policies', b.expense.policies], ['interest', b.expense.interest]];
+      const lines: [string, number][] = [['roads', b.expense.roads], ['services', b.expense.services], ['transit', b.expense.transit], ['policies', b.expense.policies], ['interest', b.expense.interest], ['imports', b.expense.imports]];
       lines.sort((x, y) => y[1] - x[1]);
       const [name, v] = lines[0];
       if (v > 0) out.push({ sev: 'warn', icon: '🧾', key: 'topExpense', params: { name, pct: fmt((v / Math.max(1, b.expenseTotal)) * 100), n: fmt(v) } });

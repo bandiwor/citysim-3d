@@ -1,3 +1,4 @@
+import { eduMixOf, specDef } from '../data/resources';
 import type { Game } from '../core/Game';
 import { isIdle, type Building } from '../core/types';
 import { effectiveDef, FUNDING_GROUPS } from '../data/services';
@@ -208,11 +209,24 @@ export class Inspector {
       if (z.housing) row(t('inspector.residents'), `${fmtNumber(b.pop)} / ${fmtNumber(b.cap)}`);
       else {
         row(t('inspector.workers'), `${fmtNumber(b.workers)} / ${fmtNumber(b.jobs)}`);
-        const mix = z.levels[b.level - 1].eduMix;
+        const mix = eduMixOf(b, z.levels[b.level - 1].eduMix);
         row(t('inspector.jobsEdu'), `${Math.round(mix[0] * 100)}% · ${Math.round(mix[1] * 100)}% · ${Math.round(mix[2] * 100)}%`);
       }
       if (z.housing) row(t('inspector.employed'), fmtPercent(1 - g.get('stats').unemployment));
       if (z.id === 'com') row(t('inspector.goods'), fmtPercent(b.goods));
+      // природные ресурсы: специализация предприятия либо что лежит под обычной промышленностью
+      const res = g.get('resources');
+      if (res && z.id === 'ind') {
+        const sd = b.spec ? specDef(b.spec) : undefined;
+        if (sd) {
+          row(t('inspector.spec'), `${sd.icon} ${t(`spec.${sd.id}.name`)}`);
+          row(t('inspector.reserve'), fmtPercent(res.sample(sd.resource, b.x, b.z)));
+          row(t('inspector.export'), `${fmtMoney(res.goodsValue(b))}${t('unit.perMonth')}${g.get('trade')?.isLinked(b.comp) ? '' : ` · ${t('inspector.noLink')}`}`);
+        } else if (b.level < 3) {
+          const d = res.dominant(b.x, b.z);
+          row(t('inspector.resourceHere'), d.value > 0.15 ? `${t(`resource.${d.kind}`)} ${fmtPercent(d.value)}` : '—');
+        }
+      }
       row(t('inspector.happiness'), bar(b.happiness));
       const why = g.get('diag').buildingWhy(b);
       if (why) row(t('inspector.why'), h('span', { class: 'v warn', text: `⚠ ${t(why)}` }));
@@ -237,6 +251,8 @@ export class Inspector {
       if (e.provides?.power) row(t('inspector.power'), `+${fmtNumber(e.provides.power)}`);
       if (e.provides?.water) row(t('inspector.water'), `+${fmtNumber(e.provides.water)}`);
       if (e.coverage) row(t('inspector.radius'), `${Math.round(e.coverage.radius * 10) / 10} ${t('unit.cells')}`);
+      if (e.attraction) row(t('inspector.attraction'), fmtNumber(g.get('tourism')?.attractions().find((a) => a.id === b.id)?.points ?? e.attraction));
+      if (e.beds) row(t('inspector.beds'), fmtNumber(e.beds));
       if (e.pollution) row(t('inspector.pollution'), `${Math.round(e.pollution.strength * 100)}%`);
     }
     if (b.con < 1) row(t('inspector.construction'), `${b.conKind === 0 ? '🏗️' : b.conKind === 1 ? '⬆️' : '🔧'} ${fmtPercent(b.con)}`);
@@ -335,11 +351,13 @@ export function budgetBody(game: Game, onDiagnose?: () => void): { el: HTMLEleme
       line(t('budget.taxInd'), b.income.ind),
       line(t('budget.fares'), b.income.transit),
       line(t('budget.export'), b.income.export),
+      line(t('budget.tourism'), b.income.tourism),
       line(t('budget.roads'), -b.expense.roads),
       line(t('budget.services'), -b.expense.services),
       line(t('budget.transit'), -b.expense.transit),
       line(t('budget.policies'), -b.expense.policies),
       line(t('budget.interest'), -b.expense.interest),
+      line(t('budget.imports'), -b.expense.imports),
       line(t('budget.total'), b.net, b.net < 0 ? 'neg total' : 'pos total'),
     );
     loan.replaceChildren(

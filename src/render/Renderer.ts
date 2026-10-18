@@ -29,6 +29,8 @@ import { GrassView } from './GrassView';
 import { PropView } from './PropView';
 import { TreeView } from './TreeView';
 import { VehicleView } from './VehicleView';
+import { WeatherView } from './WeatherView';
+import { ConnectionView } from './ConnectionView';
 import type { View } from './View';
 import { OverlayView, ZoneLayerView } from './ZoneLayerView';
 
@@ -38,6 +40,8 @@ const DAWN_SKY = new Color(0xf4a99a);
 const WARM_SUN = new Color(1, 0.52, 0.28);
 const WHITE_SUN = new Color(1, 0.96, 0.88);
 const NIGHT_SKY = new Color(0x0b1226);
+const GREY = new Color(0x9aa4ae);
+const FLASH = new Color(0xdfe6ff);
 
 /** Сцена, свет, смена дня/ночи, тени и список видов. */
 export class Renderer {
@@ -61,6 +65,10 @@ export class Renderer {
   private _amb = new AmbientLight(0x5a6ca0, 0.2);
   private _sky = new Color();
   private _fixed = 0.45;
+  /** вспышка молнии 0..1 (гроза) */
+  private _flash = 0;
+  private _flashTimer = 3;
+  private _fogBase = { near: 300, far: 1500 };
   /** тени перерисовываются не каждый кадр: при движении камеры — сразу, иначе раз в несколько кадров */
   private _shadowKey = '';
   private _shadowSkip = 0;
@@ -115,6 +123,8 @@ export class Renderer {
       this.routes,
       this.pedestrians,
       new AlertView(this.scene, _game),
+      new ConnectionView(this.scene, _game),
+      new WeatherView(this.scene, _game, () => ({ x: this.camera.target.x, z: this.camera.target.z, distance: this.camera.distance })),
     );
     window.addEventListener('resize', () => this.resize());
     this._applyGraphics(graphics.get());
@@ -136,8 +146,9 @@ export class Renderer {
     if (!g.autoRes) this._dyn = 1;
     this.three.setPixelRatio(this._basePR * this._dyn);
     const fog = this.scene.fog as Fog;
-    fog.near = g.fog ? 300 : 20000;
-    fog.far = g.fog ? 1500 : 40000;
+    this._fogBase = { near: g.fog ? 300 : 20000, far: g.fog ? 1500 : 40000 };
+    fog.near = this._fogBase.near;
+    fog.far = this._fogBase.far;
     this.dayNight = g.dayNight;
     this.treesVisible = g.trees;
     if (this._views.length) this.resize();
@@ -166,6 +177,7 @@ export class Renderer {
     this.camera.update(realDt);
     for (const v of this._views) v.update?.(realDt, simDt);
     this._light();
+    this._weatherLight(realDt, simDt);
     this._shadowSchedule();
     this.three.render(this.scene, this.camera.camera);
     this._adaptResolution(realDt);
@@ -249,5 +261,37 @@ export class Renderer {
     (this.scene.fog as Fog).color.copy(this._sky);
     this.night = this.dayNight ? 1 - smoothstep(-0.05, 0.25, height) : 0;
     this.buildings.materials.setNight(this.night);
+  }
+
+  /** Погода поверх освещения: пасмурно — тусклее солнце и серое небо, туман и осадки — ближе дымка, гроза — вспышки. */
+  private _weatherLight(realDt: number, simDt: number): void {
+    const w = this._game.get('weather');
+    if (!w) return;
+    const over = w.intensity;
+    const fogK = w.kind === 'fog' ? 0.25 : 1 - 0.45 * w.precipitation();
+    this._sun.intensity *= 1 - 0.65 * over;
+    this._hemi.intensity *= 1 - 0.2 * over;
+    // снег на земле подсвечивает всё отражённым светом
+    this._hemi.intensity += 0.15 * w.snow;
+    const grey = GREY.clone().multiplyScalar(0.35 + 0.65 * (1 - this.night));
+    this._sky.lerp(grey, 0.65 * Math.max(over, w.kind === 'fog' ? 0.8 : 0));
+    if (simDt > 0 && w.kind === 'storm') {
+      this._flashTimer -= realDt;
+      if (this._flashTimer <= 0) {
+        this._flash = 1;
+        this._flashTimer = 4 + Math.random() * 9;
+        this._game.sfx('thunder');
+      }
+    }
+    this._flash = Math.max(0, this._flash - realDt * 5);
+    if (this._flash > 0) {
+      this._amb.intensity += this._flash * 1.6;
+      this._sky.lerp(FLASH, this._flash * 0.6);
+    }
+    (this.scene.background as Color).copy(this._sky);
+    const fog = this.scene.fog as Fog;
+    fog.color.copy(this._sky);
+    fog.near = this._fogBase.near * fogK;
+    fog.far = this._fogBase.far * (0.4 + 0.6 * fogK);
   }
 }

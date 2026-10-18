@@ -1,3 +1,4 @@
+import { pollutionMulOf } from '../data/resources';
 import { isIdle } from '../core/types';
 import { effectiveDef } from '../data/services';
 import { CELL } from '../config/constants';
@@ -53,6 +54,7 @@ export class MapsSystem implements System {
     if (type === 'pollution') return this.pollution;
     if (type === 'noise') return this.noise;
     if (type === 'landValue') return this.landValue;
+    if (type === 'shore') return this._shore;
     let a = this._layers.get(type);
     if (!a) this._layers.set(type, (a = new Float32Array(this._game.world.cells)));
     return a;
@@ -96,7 +98,7 @@ export class MapsSystem implements System {
         }
         if (d.pollution) sources.push({ layer: 'pollution', x: b.x, z: b.z, r: d.pollution.radius * CELL, strength: d.pollution.strength, additive: true });
       } else {
-        const p = g.zoneTypes.require(b.zone).levels[b.level - 1].pollution;
+        const p = g.zoneTypes.require(b.zone).levels[b.level - 1].pollution * pollutionMulOf(b);
         if (p > 0) sources.push({ layer: 'pollution', x: b.x, z: b.z, r: c.industryPollutionRadius * CELL, strength: c.industryPollution * p, additive: true });
       }
     }

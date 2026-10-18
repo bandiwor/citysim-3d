@@ -3,6 +3,7 @@ import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, t } from '../i18n';
 import { h } from './dom';
 import { icon } from './icons';
 import { UI_ICONS } from './icons/map';
+import { weatherLabel } from './RegionPanels';
 import { clockLabel, dateLabel, phaseIcon } from './format';
 
 /** Верхняя панель: дата, деньги, население, счастье, спрос RCI, скорость, меню. */
@@ -29,7 +30,7 @@ export class Hud {
   private _timer = 0;
   private _off: () => void;
 
-  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; education(): void; diagnostics(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void; goals(): void; policies(): void; advisor(btn: HTMLElement): void; event(): void }) {
+  constructor(private _game: Game, actions: { menu(): void; budget(): void; stats(): void; education(): void; diagnostics(): void; maps(btn: HTMLElement): void; routes(): void; city(): void; walk(): void; settings(): void; help(): void; save(): void; goals(): void; policies(): void; advisor(btn: HTMLElement): void; event(): void; trade(): void; tourism(): void }) {
     const bars = h('div', { class: 'rci', title: t('hud.demand') });
     for (const z of _game.zoneTypes.all()) {
       const fill = h('div', { class: 'rci-fill', style: `background:#${z.color.toString(16).padStart(6, '0')}` });
@@ -54,6 +55,8 @@ export class Hud {
       { ic: '🔍', svg: UI_ICONS.diagnostics, label: t('hud.diagnostics'), title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, fn: actions.diagnostics },
       { ic: '🎓', svg: UI_ICONS.education, label: t('hud.education'), title: `${t('hud.education')} (E)`, fn: actions.education },
       { ic: '🚌', svg: UI_ICONS.routes, label: t('hud.routes'), title: `${t('hud.routes')} (T)`, fn: actions.routes },
+      { ic: '🚛', svg: UI_ICONS.trade, label: t('hud.trade'), title: t('hud.trade'), fn: actions.trade },
+      { ic: '🧳', svg: UI_ICONS.tourism, label: t('hud.tourism'), title: t('hud.tourism'), fn: actions.tourism },
       { ic: '🗑️', svg: UI_ICONS.city, label: t('hud.city'), title: `${t('hud.city')} (H)`, fn: actions.city },
       { ic: '🚶', svg: UI_ICONS.walk, label: t('hud.walk'), title: `${t('hud.walk')} (P)`, fn: actions.walk },
       { ic: '💾', svg: UI_ICONS.save, label: t('menu.save'), title: t('menu.save'), fn: actions.save },
@@ -157,10 +160,12 @@ export class Clock {
   private _icon = h('span', { class: 'clock-ic' });
   private _time = h('span', { class: 'clock-t' });
   private _date = h('span', { class: 'clock-d' });
+  private _wx = h('span', { class: 'clock-w' });
+  private _wxKind = '';
   private _timer: number;
 
   constructor(private _game: Game) {
-    this.el = h('div', { class: 'clock', title: t('hud.clock') }, this._icon, h('div', { class: 'clock-c' }, this._time, this._date));
+    this.el = h('div', { class: 'clock', title: t('hud.clock') }, this._icon, h('div', { class: 'clock-c' }, this._time, this._date), this._wx);
     this._timer = window.setInterval(() => this.refresh(), 200);
     this.refresh();
   }
@@ -174,5 +179,14 @@ export class Clock {
     this._icon.textContent = phaseIcon(time.tod);
     this._time.textContent = clockLabel(time.tod);
     this._date.textContent = dateLabel(time);
+    // погода: значок и температура; подробности — в подсказке
+    const w = this._game.get('weather');
+    if (!w) return;
+    if (w.kind !== this._wxKind) {
+      this._wxKind = w.kind;
+      this._wx.replaceChildren(icon(UI_ICONS.weather[w.kind], w.icon()), h('b', {}));
+    }
+    (this._wx.lastChild as HTMLElement).textContent = `${w.temperature()}°`;
+    this.el.title = `${t('hud.clock')}\n${weatherLabel(this._game)}`;
   }
 }

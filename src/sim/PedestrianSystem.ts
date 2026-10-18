@@ -24,6 +24,8 @@ export interface Walker {
   z: number;
   yaw: number;
   phase: number;
+  /** турист (гуляет у достопримечательностей) */
+  tourist?: boolean;
 }
 
 /** Люди на тротуарах и у остановок. Живут только вокруг точки интереса (камера / игрок), поэтому дёшево. */
@@ -35,6 +37,7 @@ export class PedestrianSystem implements System {
   focus: { x: number; z: number } | null = null;
   private _game!: Game;
   private _rng = new Rng(77);
+  private _spots: { x: number; z: number; w: number }[] = [];
   private _acc = 0;
 
   init(game: Game): void {
@@ -55,7 +58,24 @@ export class PedestrianSystem implements System {
     const tod = g.get('time').tod;
     const h = tod * 24;
     const act = h < 5 || h > 23.5 ? 0.12 : h < 7 ? 0.5 : h < 20 ? 1 : 0.55;
-    return Math.min(c.max, Math.round(pop * c.perResidentNear * act));
+    return Math.min(c.max, Math.round(pop * c.perResidentNear * act) + this.touristTarget());
+  }
+
+  /** Туристы у достопримечательностей рядом с точкой обзора (днём). */
+  touristTarget(): number {
+    const g = this._game;
+    const f = this.focus;
+    const tour = g.get('tourism');
+    if (!f || !tour || tour.tourists < 1) return 0;
+    const h = g.get('time').tod * 24;
+    if (h < 8 || h > 21) return 0;
+    const r = g.config.pedestrians.radius;
+    this._spots = tour.attractions().flatMap((a) => {
+      const b = g.world.buildings.get(a.id);
+      return b && Math.abs(b.x - f.x) < r && Math.abs(b.z - f.z) < r ? [{ x: b.x, z: b.z, w: a.points }] : [];
+    });
+    const near = this._spots.reduce((s, p) => s + p.w, 0);
+    return Math.min(Math.round(g.config.pedestrians.max * 0.4), Math.round(near * Math.min(1, tour.tourists / 2500) * 1.2));
   }
 
   update(dt: number): void {
@@ -77,18 +97,26 @@ export class PedestrianSystem implements System {
       this._acc = 0;
       const want = this.target();
       let spawn = Math.min(Math.ceil(c.spawnPerSecond * 0.5), want - this.walkers.length);
-      while (spawn-- > 0) this._spawn(f.x, f.z);
+      const tourists = this.touristTarget();
+      let haveT = 0;
+      for (const w of this.walkers) if (w.tourist) haveT++;
+      while (spawn-- > 0) {
+        // недостающих туристов — к достопримечательностям, остальных — по округе
+        const spot = haveT < tourists && this._spots.length ? this._spots[Math.floor(this._rng.next() * this._spots.length)] : null;
+        if (spot) haveT++;
+        this._spawn(spot ? spot.x : f.x, spot ? spot.z : f.z, !!spot);
+      }
       if (this.walkers.length > want + 6) this.walkers.length = want;
     }
     for (const w of this.walkers) this._walk(w, dt);
   }
 
-  private _spawn(fx: number, fz: number): void {
+  private _spawn(fx: number, fz: number, tourist = false): void {
     const g = this._game;
     const c = g.config.pedestrians;
     const rng = this._rng;
     const a = rng.next() * Math.PI * 2;
-    const r = Math.sqrt(rng.next()) * c.radius;
+    const r = Math.sqrt(rng.next()) * (tourist ? 26 : c.radius);
     const hit = g.world.graph.nearest(fx + Math.cos(a) * r, fz + Math.sin(a) * r, 30, (e) => e.type >= 0 && g.roadTypes.at(e.type).sidewalk > 0 && !e.bridge);
     if (!hit) return;
     const e = hit.edge;
@@ -104,8 +132,9 @@ export class PedestrianSystem implements System {
       z: hit.z,
       yaw: 0,
       phase: rng.next() * 10,
+      tourist,
     };
-    w.speed = (c.speed[0] + rng.next() * (c.speed[1] - c.speed[0])) * lookOf(seed).speed;
+    w.speed = (c.speed[0] + rng.next() * (c.speed[1] - c.speed[0])) * lookOf(seed, tourist).speed;
     this._place(w);
     this.walkers.push(w);
   }

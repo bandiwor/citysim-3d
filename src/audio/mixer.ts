@@ -21,12 +21,15 @@ export interface AmbientState {
   sources?: Partial<Record<SoundSource, number>>;
   /** активные тревоги: ограбления */
   alarms?: number;
+  /** сила дождя 0..1 (снег не шумит) и гроза */
+  rain?: number;
+  storm?: boolean;
 }
 
 export const SOUND_SOURCES = ['turbine', 'machinery', 'gulls', 'fountain', 'kids'] as const;
 export type SoundSource = (typeof SOUND_SOURCES)[number];
 
-export const AMBIENT_LAYERS = ['city', 'traffic', 'industry', 'wind', 'birds', 'crickets', 'water', 'siren', 'turbine', 'machinery', 'fountain', 'gulls', 'kids'] as const;
+export const AMBIENT_LAYERS = ['city', 'traffic', 'industry', 'wind', 'birds', 'crickets', 'water', 'siren', 'turbine', 'machinery', 'fountain', 'gulls', 'kids', 'rain'] as const;
 export type AmbientLayer = (typeof AMBIENT_LAYERS)[number];
 export type AmbientTargets = Record<AmbientLayer, number>;
 
@@ -60,11 +63,15 @@ export function computeMix(s: AmbientState, p: MixParams = defaultMixParams): Am
     fountain: clamp((s.sources?.fountain ?? 0) * (0.2 + 0.8 * close), 0, 1),
     gulls: clamp((s.sources?.gulls ?? 0) * close, 0, 1),
     kids: clamp((s.sources?.kids ?? 0) * (1 - s.night) * close, 0, 1),
+    rain: clamp((s.rain ?? 0) * (0.55 + 0.45 * close), 0, 1),
   };
+  // в дождь птицы молчат, в грозу ветер сильнее
+  if ((s.rain ?? 0) > 0.1) out.birds *= 0.2;
+  if (s.storm) out.wind = clamp(out.wind + 0.45, 0, 1);
   if (s.speed === 0) {
     // пауза: механические и аварийные звуки замолкают, остаётся тихий фон
     for (const k of ['traffic', 'industry', 'siren', 'turbine', 'machinery', 'fountain', 'gulls', 'kids'] as const) out[k] = 0;
-    for (const k of ['city', 'wind', 'birds', 'crickets', 'water'] as const) out[k] *= 0.35;
+    for (const k of ['city', 'wind', 'birds', 'crickets', 'water', 'rain'] as const) out[k] *= 0.35;
   }
   return out;
 }

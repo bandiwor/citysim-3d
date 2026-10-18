@@ -20,6 +20,11 @@ export class UtilitySystem implements System {
   powerDemand = 0;
   waterSupply = 0;
   waterDemand = 0;
+  /** потоки с соседями (единиц в месяц): куплено и продано */
+  powerImport = 0;
+  powerExport = 0;
+  waterImport = 0;
+  waterExport = 0;
   private _powerLeft = new Float64Array(0);
   private _waterLeft = new Float64Array(0);
   private _game!: Game;
@@ -36,6 +41,7 @@ export class UtilitySystem implements System {
     game.bus.on('building:removed', mark);
     game.bus.on('building:updated', mark);
     game.bus.on('mods:changed', mark);
+    game.bus.on('trade:changed', mark);
   }
 
   update(_dt: number, realDt: number): void {
@@ -82,6 +88,17 @@ export class UtilitySystem implements System {
         if (b.comp >= 0) pLeft[b.comp] += b.powerOut;
       }
     }
+    // соседи: в связанных с выездом частях сети можно докупить энергию и воду
+    const trade = g.get('trade');
+    const pCap = new Float64Array(count);
+    const wCap = new Float64Array(count);
+    if (trade) {
+      for (let c = 0; c < count; c++) {
+        pCap[c] = trade.importCap(c, 'power');
+        wCap[c] = trade.importCap(c, 'water');
+        pLeft[c] += pCap[c];
+      }
+    }
     for (const b of list) {
       const need = isIdle(b) ? 0 : b.powerNeed * pm;
       this.powerDemand += need;
@@ -97,6 +114,7 @@ export class UtilitySystem implements System {
         if (b.comp >= 0) wLeft[b.comp] += b.waterOut;
       }
     }
+    for (let c = 0; c < count; c++) wLeft[c] += wCap[c];
     for (const b of list) {
       const need = isIdle(b) ? 0 : b.waterNeed * wm;
       this.waterDemand += need;
@@ -105,6 +123,15 @@ export class UtilitySystem implements System {
         wLeft[b.comp] -= need;
         b.watered = true;
       } else b.watered = false;
+    }
+    // докупили то, что не покрыли свои станции; продаём остаток своих мощностей (не перепродаём купленное)
+    this.powerImport = this.powerExport = this.waterImport = this.waterExport = 0;
+    for (let c = 0; c < count; c++) {
+      if (!trade?.isLinked(c)) continue;
+      this.powerImport += Math.max(0, pCap[c] - pLeft[c]);
+      this.waterImport += Math.max(0, wCap[c] - wLeft[c]);
+      if (trade.canExport('power')) this.powerExport += Math.max(0, pLeft[c] - pCap[c]);
+      if (trade.canExport('water')) this.waterExport += Math.max(0, wLeft[c] - wCap[c]);
     }
     if (g.cheats.freeUtilities) for (const b of list) b.powered = b.watered = true;
     this._powerLeft = pLeft;

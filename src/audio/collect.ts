@@ -57,7 +57,11 @@ export function collectAmbient(game: Game, view: ListenerView): AmbientState {
     const d = Math.hypot(b.x - view.x, b.z - view.z);
     if (d < r) sources[tag] = (sources[tag] ?? 0) + (1 - d / r) ** 2;
   }
+  const weather = game.get('weather');
+  const rain = weather && weather.kind !== 'snow' ? weather.precipitation() : 0;
   return {
+    rain,
+    storm: weather?.kind === 'storm',
     zoom: view.distance,
     buildingsNear: near.length,
     vehiclesNear: cars,

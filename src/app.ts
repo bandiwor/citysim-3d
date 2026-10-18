@@ -1,3 +1,4 @@
+import { resourcesFeature, tourismFeature, tradeFeature, weatherFeature } from './features/living';
 import './ui/fonts.css';
 import './style.css';
 import './ui/theme.css';
@@ -37,7 +38,7 @@ export async function boot(): Promise<void> {
   const build = (): Game => {
     const g = new Game({ seed: choice.seed, terrain, terrainStyle: choice.style, cheats: choice.cheats, compute, config: { progress: { enabled: choice.mode === 'career' } } });
     // Подключение механик: данные (дороги/зоны/службы) до систем, которые их читают.
-    g.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(natureFeature).use(disastersFeature);
+    g.use(roadsFeature).use(zonesFeature).use(servicesFeature).use(trafficFeature).use(coreFeature).use(natureFeature).use(disastersFeature).use(weatherFeature).use(resourcesFeature).use(tradeFeature).use(tourismFeature);
     return g;
   };
   let game = build();

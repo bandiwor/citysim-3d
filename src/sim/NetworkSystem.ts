@@ -41,6 +41,11 @@ export class NetworkSystem implements System {
     if (this._game.world.graph.version !== this._graphVersion) this.rebuild();
   }
 
+  /** Компонента связности узла (−1 — неизвестен). */
+  compOfNode(node: number): number {
+    return this._comp.get(node) ?? -1;
+  }
+
   /** Компонента связности ребра (−1, если ребра нет). */
   compOfEdge(edge: number): number {
     const e = this._game.world.graph.edges.get(edge);

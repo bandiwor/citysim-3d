@@ -45,5 +45,10 @@ it('ни у одной модели здания нет совпадающих �
     withLod(0, () => zoneModel(z, lv, v, w));
     all.push(...audit(`${z}${lv}.${v}.w${w}`));
   }
+  for (const spec of ['farm', 'forest', 'ore', 'oil']) for (let lv = 1; lv <= 2; lv++) for (let v = 0; v < 3; v++) {
+    captured = [];
+    withLod(0, () => zoneModel('ind', lv, v, 1, spec));
+    all.push(...audit(`${spec}${lv}.${v}`));
+  }
   expect([...new Set(all)].slice(0, 20)).toEqual([]);
 });

@@ -28,6 +28,9 @@ export interface UpgradeDef {
     /** + машин в парке, + рабочих мест */
     fleet?: number;
     jobs?: number;
+    /** × привлекательность для туристов, × мест в отеле */
+    attraction?: number;
+    beds?: number;
   };
 }
 
@@ -59,6 +62,10 @@ export interface ServiceDef extends Indexed {
   morgue?: { capacity: number; burn: number };
   /** звук здания, слышимый рядом (ветряк, механизмы, фонтан, чайки, дети) */
   sound?: 'turbine' | 'machinery' | 'gulls' | 'fountain' | 'kids';
+  /** привлекательность для туристов (очки; см. TourismSystem) */
+  attraction?: number;
+  /** мест для туристов (отель) */
+  beds?: number;
   /** доступные улучшения (максимум 30) */
   upgrades?: UpgradeDef[];
 }
@@ -115,7 +122,6 @@ export const SERVICES: ServiceDef[] = [
   // Городские символы
   { id: 'townhall', index: 0, icon: '🏛️', category: 'landmarks', size: [2, 2], cost: 12000, upkeep: 220, jobs: 25, powerNeed: 20, waterNeed: 6, fundingGroup: 'utilities', needsRoad: true, model: 'townhall' },
   { id: 'monument', index: 0, icon: '🗽', category: 'landmarks', size: [2, 2], cost: 30000, upkeep: 120, jobs: 6, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 28, strength: 1 }, model: 'monument' },
-  // Общественный транспорт
   { id: 'clocktower', index: 0, icon: '🕰️', category: 'landmarks', size: [1, 1], cost: 5000, upkeep: 15, jobs: 1, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 12, strength: 0.9 }, model: 'clocktower' },
   { id: 'obelisk', index: 0, icon: '🔺', category: 'landmarks', size: [1, 1], cost: 4200, upkeep: 10, jobs: 0, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 10, strength: 0.85 }, model: 'obelisk' },
   { id: 'arch', index: 0, icon: '🏛️', category: 'landmarks', size: [2, 2], cost: 11000, upkeep: 40, jobs: 2, powerNeed: 0, waterNeed: 0, fundingGroup: 'parks', needsRoad: false, coverage: { type: 'park', radius: 16, strength: 0.95 }, model: 'arch' },
@@ -123,9 +129,31 @@ export const SERVICES: ServiceDef[] = [
   { id: 'cathedral', index: 0, icon: '⛪', category: 'landmarks', size: [3, 3], cost: 22000, upkeep: 90, jobs: 8, powerNeed: 8, waterNeed: 2, fundingGroup: 'parks', needsRoad: true, coverage: { type: 'park', radius: 22, strength: 1 }, model: 'cathedral' },
   { id: 'opera', index: 0, icon: '🎭', category: 'landmarks', size: [3, 3], cost: 28000, upkeep: 180, jobs: 30, powerNeed: 30, waterNeed: 6, fundingGroup: 'parks', needsRoad: true, coverage: { type: 'park', radius: 24, strength: 1 }, model: 'opera' },
   { id: 'ferriswheel', index: 0, icon: '🎡', category: 'landmarks', size: [3, 3], cost: 18000, upkeep: 130, jobs: 12, powerNeed: 20, waterNeed: 2, fundingGroup: 'parks', needsRoad: true, coverage: { type: 'park', radius: 22, strength: 0.95 }, model: 'ferriswheel' },
+  // Туризм
+  { id: 'hotel', index: 0, icon: '🏨', category: 'landmarks', size: [2, 2], cost: 9000, upkeep: 140, jobs: 24, powerNeed: 24, waterNeed: 12, fundingGroup: 'parks', needsRoad: true, beds: 700, model: 'hotel' },
+  { id: 'touristinfo', index: 0, icon: 'ℹ️', category: 'landmarks', size: [1, 1], cost: 2500, upkeep: 40, jobs: 4, powerNeed: 4, waterNeed: 1, fundingGroup: 'parks', needsRoad: true, attraction: 2, model: 'touristinfo' },
+  // Общественный транспорт
   { id: 'taxidepot', index: 0, icon: '🚕', category: 'transit', size: [2, 2], cost: 4500, upkeep: 110, jobs: 8, powerNeed: 8, waterNeed: 2, fundingGroup: 'transit', needsRoad: true, fleet: { kind: 'taxi', count: 6 }, model: 'taxidepot' },
   { id: 'busdepot', index: 0, icon: '🚌', category: 'transit', size: [2, 2], cost: 7000, upkeep: 160, jobs: 10, powerNeed: 14, waterNeed: 3, fundingGroup: 'transit', needsRoad: true, fleet: { kind: 'bus', count: 8 }, model: 'busdepot' },
 ];
+
+/** Привлекательность для туристов: достопримечательности, крупные парки и стадион (очки на здание). */
+const ATTRACTION: Record<string, number> = {
+  monument: 22,
+  cathedral: 26,
+  opera: 24,
+  ferriswheel: 28,
+  tvtower: 20,
+  arch: 12,
+  clocktower: 8,
+  obelisk: 6,
+  townhall: 6,
+  stadium: 16,
+  bigpark: 6,
+  garden: 9,
+  plaza: 3,
+};
+for (const s of SERVICES) if (ATTRACTION[s.id]) s.attraction = ATTRACTION[s.id];
 
 const up = (id: string, icon: string, cost: number, upkeep: number, fx: UpgradeDef['fx']): UpgradeDef => ({ id, icon, cost, upkeep, fx });
 
@@ -156,7 +184,11 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
   recycling: [up('sorting', '🗂️', 4500, 50, { burn: 1.8 }), up('hall', '🏭', 6000, 60, { capacity: 1.8 })],
   cemetery: [up('expansion', '🪦', 2500, 20, { capacity: 2 })],
   crematorium: [up('furnace', '🔥', 3500, 40, { burn: 1.8 }), up('filter', '🌫️', 3000, 30, { pollution: 0.4 })],
-  monument: [up('garden', '🌷', 3000, 20, { radius: 1.2, strength: 1.1 })],
+  monument: [up('garden', '🌷', 3000, 20, { radius: 1.2, strength: 1.1, attraction: 1.2 }), up('lights', '💡', 4000, 30, { attraction: 1.25 })],
+  hotel: [up('pool', '🏊', 4000, 40, { beds: 1.2 }), up('wing', '🏢', 8000, 70, { beds: 1.6, jobs: 12 }), up('spa', '💆', 6000, 60, { beds: 1.1 })],
+  touristinfo: [up('tours', '🚌', 2500, 30, { attraction: 2 })],
+  ferriswheel: [up('lights', '💡', 4500, 40, { attraction: 1.3 })],
+  opera: [up('festival', '🎻', 7000, 80, { attraction: 1.3, jobs: 8 })],
   nuclear: [up('cooling', '❄️', 14000, 120, { power: 1.15 }), up('containment', '🛡️', 20000, 160, { power: 1.1, jobs: 20 })],
   geothermal: [up('deep', '⛏️', 9000, 70, { power: 1.4 })],
   windfarm: [up('rotors', '🌀', 6000, 40, { power: 1.35 })],
@@ -240,6 +272,8 @@ export function effectiveDef(def: ServiceDef, mask: number): ServiceDef {
     }
     if (e.fleet && f.fleet) e.fleet.count += f.fleet;
     if (f.jobs) e.jobs += f.jobs;
+    if (f.attraction && e.attraction) e.attraction *= f.attraction;
+    if (f.beds && e.beds) e.beds *= f.beds;
   }
   effCache.set(key, e);
   return e;

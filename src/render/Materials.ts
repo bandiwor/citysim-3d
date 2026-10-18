@@ -1,3 +1,4 @@
+import { withSnow } from './snow';
 import { CanvasTexture, Color, MeshLambertMaterial, RepeatWrapping, SRGBColorSpace } from 'three';
 import { Rng } from '../core/Rng';
 
@@ -47,6 +48,8 @@ export class BuildingMaterials {
       emissiveMap: glow,
       emissiveIntensity: 0,
     });
+    // зимой крыши белеют
+    withSnow(this.material);
   }
 
   setNight(k: number): void {

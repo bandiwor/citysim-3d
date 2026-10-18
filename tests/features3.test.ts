@@ -452,17 +452,20 @@ describe('прогресс, политики, цели, события, сове
     expect(ps.toggle('watch').ok).toBe(true);
     expect(g.get('mods').mul('crime')).toBe(1);
     expect(g.get('economy').computeBudget().expense.policies).toBe(0);
+    // к счастью добавляются и сезон/погода: сравниваем с тем, что было до политики
+    const h0 = g.get('mods').add('happiness');
     ps.toggle('parks');
-    expect(g.get('mods').add('happiness')).toBeCloseTo(0.04);
+    expect(g.get('mods').add('happiness')).toBeCloseTo(h0 + 0.04);
   });
 
   it('временный модификатор истекает через заданное число дней', async () => {
     const g = createGame();
     const mods = g.get('mods');
+    const h0 = mods.add('happiness');
     mods.put({ id: 'x', icon: '⭐', nameKey: 'event.festival.title', until: g.get('time').totalDays + 3, add: { happiness: 0.1 } });
-    expect(mods.add('happiness')).toBeCloseTo(0.1);
+    expect(mods.add('happiness')).toBeCloseTo(h0 + 0.1);
     await run(g, g.config.time.dayLength * 4);
-    expect(mods.add('happiness')).toBe(0);
+    expect(mods.active.some((m) => m.id === 'x')).toBe(false);
   });
 
   it('событие: выбор списывает деньги и накладывает эффект; без ответа применяется вариант по умолчанию', () => {
@@ -554,8 +557,10 @@ describe('прогресс, политики, цели, события, сове
     g2.start();
     g2.step(0.1);
     expect(g2.get('policy').has('smoke')).toBe(true);
-    expect(g2.get('mods').mul('fire')).toBeCloseTo(0.45);
-    expect(g2.get('mods').add('happiness')).toBeCloseTo(0.05);
+    // сезон и погода тоже дают модификаторы, поэтому проверяем сами восстановленные эффекты
+    const active = g2.get('mods').active;
+    expect(active.filter((m) => m.mul?.fire === 0.45)).toHaveLength(1);
+    expect(active.find((m) => m.id === 'event:x')?.add?.happiness).toBeCloseTo(0.05);
     expect(g2.get('events').pending?.id).toBe('storm');
     expect(g2.get('progress').peakPop).toBe(900);
     expect(g2.get('objectives').active.length).toBe(g.get('objectives').active.length);

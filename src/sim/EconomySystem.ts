@@ -11,8 +11,8 @@ declare module '../core/Game' {
 }
 
 export interface Budget {
-  income: { res: number; com: number; ind: number; transit: number; export: number };
-  expense: { roads: number; services: number; transit: number; interest: number; policies: number };
+  income: { res: number; com: number; ind: number; transit: number; export: number; tourism: number };
+  expense: { roads: number; services: number; transit: number; interest: number; policies: number; imports: number };
   incomeTotal: number;
   expenseTotal: number;
   net: number;
@@ -109,8 +109,8 @@ export class EconomySystem implements System {
     const g = this._game;
     const c = g.config.economy;
     const maps = g.get('maps');
-    const income = { res: 0, com: 0, ind: 0, transit: this._transitMonth, export: 0 };
-    const expense = { roads: 0, services: 0, transit: 0, interest: this.debt * c.loanInterest, policies: g.get('policy').upkeep() };
+    const income = { res: 0, com: 0, ind: 0, transit: this._transitMonth, export: 0, tourism: 0 };
+    const expense = { roads: 0, services: 0, transit: 0, interest: this.debt * c.loanInterest, policies: g.get('policy').upkeep(), imports: 0 };
     const incomeMul = g.get('mods').mul('income');
     let townhalls = 0;
 
@@ -134,18 +134,20 @@ export class EconomySystem implements System {
     for (const e of g.world.graph.edges.values()) expense.roads += (e.len / unit) * g.roadTypes.at(e.type).upkeep;
     expense.transit = g.get('transit').upkeep();
 
-    // мэрия повышает сборы (до +10%); излишки энергии и воды продаются соседям
+    // мэрия повышает сборы (до +10%); торговля с соседями и туризм — отдельными строками
     const civic = 1 + Math.min(0.1, townhalls * c.townhallBonus);
     income.res *= civic;
     income.com *= civic;
     income.ind *= civic;
-    const u = g.get('utility');
-    income.export = Math.max(0, u.powerSupply - u.powerDemand * 1.1) * c.powerExport + Math.max(0, u.waterSupply - u.waterDemand * 1.1) * c.waterExport;
+    const trade = g.get('trade')?.month();
+    income.export = trade?.income ?? 0;
+    expense.imports = trade?.expense ?? 0;
+    income.tourism = (g.get('tourism')?.income() ?? 0) * incomeMul;
     if (g.cheats.noUpkeep) {
-      expense.roads = expense.services = expense.transit = expense.policies = 0;
+      expense.roads = expense.services = expense.transit = expense.policies = expense.imports = 0;
     }
-    const incomeTotal = income.res + income.com + income.ind + income.transit + income.export;
-    const expenseTotal = expense.roads + expense.services + expense.transit + expense.interest + expense.policies;
+    const incomeTotal = income.res + income.com + income.ind + income.transit + income.export + income.tourism;
+    const expenseTotal = expense.roads + expense.services + expense.transit + expense.interest + expense.policies + expense.imports;
     return { income, expense, incomeTotal, expenseTotal, net: incomeTotal - expenseTotal };
   }
 

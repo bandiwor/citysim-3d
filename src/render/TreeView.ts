@@ -1,3 +1,4 @@
+import { withSnow } from './snow';
 import { Color, Matrix4, MeshLambertMaterial, Sphere, Vector3, type BufferGeometry, type Scene } from 'three';
 import { CELL } from '../config/constants';
 import type { Game } from '../core/Game';
@@ -79,6 +80,7 @@ export class TreeView implements View {
   constructor(scene: Scene, private _game: Game, private _eye: () => Vector3 = () => new Vector3(0, 1e6, 0)) {
     const w = _game.world;
     const mat = new MeshLambertMaterial({ vertexColors: true });
+    withSnow(mat, 0.8);
     for (const k of KINDS) this._geo.set(k, [propModel(k, 0), propModel(k, 1)]);
     const rng = new Rng(w.seed + 99);
     const noise = new Noise(w.seed + 3);

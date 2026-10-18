@@ -55,9 +55,9 @@ export class PedestrianView implements View {
     };
   }
 
-  private _person(x: number, z: number, yaw: number, seed: number, phase: number, moving: boolean): void {
+  private _person(x: number, z: number, yaw: number, seed: number, phase: number, moving: boolean, tourist = false): void {
     const g = this._game;
-    const look: Look = lookOf(seed);
+    const look: Look = lookOf(seed, tourist);
     const bob = moving ? Math.abs(Math.sin(phase)) * 0.045 * look.height : 0;
     const y = g.world.heightAt(x, z) + 0.15 + bob;
     const sc = look.height;
@@ -116,7 +116,7 @@ export class PedestrianView implements View {
       // в первом лице не рисуем людей вплотную к камере
       if (this.focusOverride && Math.hypot(w.x - this.focusOverride.x, w.z - this.focusOverride.z) < 1.4) continue;
       total++;
-      this._person(w.x, w.z, w.yaw, w.seed, w.phase, true);
+      this._person(w.x, w.z, w.yaw, w.seed, w.phase, true, w.tourist);
     }
     for (const s of ped.waiting()) {
       for (let i = 0; i < s.n && total < MAX; i++, total++) {

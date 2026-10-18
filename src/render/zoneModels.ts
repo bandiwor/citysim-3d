@@ -351,6 +351,115 @@ const OFFICES: Maker[] = [
 ];
 
 /** Таблица моделей по плотности: у «промышленной» зоны низкая — мастерские, средняя — заводы (включая бывшие гиганты), высокая — офисы. */
+// ================= СПЕЦИАЛИЗИРОВАННАЯ ПРОМЫШЛЕННОСТЬ (природные ресурсы) =================
+// Участок клетки ≈ 7×7: модели укладываются в ±3.4. Уровень 2 — крупнее и плотнее.
+
+const crops = (b: GeomBuilder, x0: number, z0: number, w: number, d: number, color: number): void => {
+  b.box(w, 0.12, d, x0, 0, z0, 0x7a5a3a);
+  for (let i = 0; i < Math.floor(d / 0.7); i++) b.box(w - 0.2, 0.32, 0.36, x0, 0.08, z0 - d / 2 + 0.45 + i * 0.7, color, { detail: i % 2 === 1 });
+};
+const barn = (b: GeomBuilder, x: number, z: number, w: number, d: number): void => {
+  b.box(w, 2.6, d, x, 0, z, 0xb4473a).prism(w + 0.3, d + 0.3, 1.6, x, 2.6, z, 0x6f737a).box(1.2, 1.9, 0.1, x, 0, z + d / 2 + 0.03, 0xe9e2d3, { detail: true });
+};
+const silo = (b: GeomBuilder, x: number, z: number, h: number): void => {
+  b.cylinder(0.8, 0.8, h, x, 0, z, 0xd9dde2, 12).sphere(0.8, x, h - 0.8, z, 0xb9bec4);
+  b.detailed(() => b.cylinder(0.84, 0.84, 0.12, x, h * 0.35, z, 0x9aa0a6, 12).cylinder(0.84, 0.84, 0.12, x, h * 0.7, z, 0x9aa0a6, 12));
+};
+const logs = (b: GeomBuilder, x: number, z: number, n: number): void => {
+  for (let i = 0; i < n; i++) for (let j = 0; j < 3 - (i % 2); j++) b.cylinder(0.28, 0.28, 2.6, x + (j - 1) * 0.6 + (i % 2) * 0.3, 0.28 + i * 0.5, z, 0x8a5a33, 7, { rx: Math.PI / 2 });
+};
+const pine = (b: GeomBuilder, x: number, z: number, s = 1): void => {
+  b.cylinder(0.12 * s, 0.16 * s, 0.9 * s, x, 0, z, 0x5a3d25, 5).cone(0.9 * s, 1.8 * s, x, 0.7 * s, z, 0x2a6e3a, 7).cone(0.65 * s, 1.4 * s, x, 1.6 * s, z, 0x30803e, 7);
+};
+const headframe = (b: GeomBuilder, x: number, z: number, h: number): void => {
+  for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) b.box(0.22, h, 0.22, x + dx, 0, z + dz, 0x5c6168);
+  b.detailed(() => {
+    for (let k = 1; k < 4; k++) b.box(1.8, 0.14, 0.14, x, (h * k) / 4, z - 0.8, 0x6c7178).box(1.8, 0.14, 0.14, x, (h * k) / 4, z + 0.8, 0x6c7178);
+  });
+  b.box(2, 0.3, 2, x, h, z, 0x6c7178).cylinder(0.9, 0.9, 0.25, x, h + 0.3, z, 0x3a3f46, 12, { rx: Math.PI / 2 });
+};
+const pumpjack = (b: GeomBuilder, x: number, z: number): void => {
+  b.box(2.6, 0.3, 0.9, x, 0, z, 0x5c6168).box(0.25, 1.8, 0.25, x - 0.25, 0.3, z - 0.3, 0x3a3f46, { rz: 0.18 }).box(0.25, 1.8, 0.25, x - 0.25, 0.3, z + 0.3, 0x3a3f46, { rz: 0.18 });
+  b.box(3, 0.32, 0.36, x, 2.1, z, 0xe0a030, { rz: -0.15 }).box(0.5, 0.9, 0.4, x + 1.55, 1.75, z, 0xe0a030);
+  b.box(0.7, 0.7, 0.7, x - 1.1, 0.3, z, 0x6c7178).cylinder(0.12, 0.12, 1.4, x + 1.55, 0.3, z, 0x3a3f46, 6);
+};
+const tank = (b: GeomBuilder, x: number, z: number, r: number, h: number): void => {
+  b.cylinder(r, r, h, x, 0, z, 0xdfe3e7, 14).cylinder(r * 1.02, r, 0.25, x, h, z, 0xb9bec4, 14);
+  b.detailed(() => b.box(0.12, h, 0.4, x + r, 0, z, 0x9aa0a6, { ry: 0.6 }));
+};
+
+const SPEC_MAKERS: Record<string, Maker[]> = {
+  farm: [
+    (b) => {
+      crops(b, -1.2, 0.6, 4.4, 5.4, 0xc9b34a);
+      barn(b, 2.2, -1.8, 2.4, 3);
+      silo(b, 2.4, 1.6, 4.2);
+      b.box(6.8, 0.6, 0.1, 0, 0, 3.4, 0xd9cfb8, { detail: true });
+    },
+    (b) => {
+      crops(b, 0, 1.6, 6.4, 3.2, 0x6fae4a);
+      crops(b, -1.6, -2, 3, 2.6, 0xd8c060);
+      barn(b, 1.9, -1.9, 2.6, 2.4);
+    },
+    (b) => {
+      crops(b, -1.6, 0, 3.4, 6.4, 0x8fc456);
+      b.box(2.8, 1.8, 4.6, 1.8, 0, 0.4, 0xdfeef0).prism(2.9, 4.7, 0.9, 1.8, 1.8, 0.4, 0xbfe0e8, false);
+      silo(b, 2, -2.6, 3.4);
+    },
+  ],
+  forest: [
+    (b) => {
+      b.box(4, 3, 3, -1.2, 0, -1.6, 0xa8845a).prism(4.4, 3.4, 1.4, -1.2, 3, -1.6, 0x6f737a);
+      logs(b, 1.8, 1.6, 3);
+      logs(b, -1.6, 2, 2);
+      pine(b, 2.6, -2.4);
+    },
+    (b) => {
+      b.box(5, 2.6, 2.6, 0, 0, -2, 0x9a7a52, { windows: true }).box(5.4, 0.3, 3, 0, 2.6, -2, 0x5c6168);
+      logs(b, -1.4, 1.4, 4);
+      b.box(0.3, 4.6, 0.3, 2.2, 0, 1.6, 0xe0a030).box(3.4, 0.3, 0.3, 1, 4.6, 1.6, 0xe0a030);
+      pine(b, 2.6, 3, 0.9);
+    },
+  ],
+  ore: [
+    (b) => {
+      headframe(b, -1.4, -1.2, 6);
+      b.cone(2.2, 2.6, 1.8, 0, 1.6, 0x7a6a58, 9);
+      b.box(2.4, 2.2, 2, 1.6, 0, -2.2, 0xb7a58a, { windows: true }).box(2.6, 0.25, 2.2, 1.6, 2.2, -2.2, 0x5c6168);
+      b.box(3.6, 0.3, 0.6, 0.2, 2.2, 0.4, 0x5c6168, { rz: 0.5 });
+    },
+    (b) => {
+      b.cone(2.8, 3, -1, 0, 1, 0x6e5e4c, 10).cone(1.6, 1.8, 2, 0, -1.8, 0x857258, 8);
+      b.box(2.4, 1.2, 1.4, 1.8, 0.3, 2.2, 0xe0a030).box(2, 0.6, 1.2, 1.6, 1.5, 2.2, 0x3a3f46);
+      for (const [x, z] of [[1.3, 1.6], [2.3, 1.6], [1.3, 2.8], [2.3, 2.8]]) b.cylinder(0.32, 0.32, 0.25, x, 0, z, 0x151515, 8, { rx: Math.PI / 2 });
+    },
+  ],
+  oil: [
+    (b) => {
+      pumpjack(b, -1, -1.6);
+      pumpjack(b, 0.8, 1.8);
+      tank(b, 2.2, -1.8, 1, 2.4);
+    },
+    (b) => {
+      tank(b, -1.6, -1.4, 1.5, 3);
+      tank(b, 1.6, -1.4, 1.2, 2.6);
+      pumpjack(b, 0, 2);
+      b.box(6, 0.18, 0.18, 0, 0.5, 0.2, 0x8a9096, { detail: true });
+    },
+  ],
+};
+
+/** Модель специализированного предприятия (ферма, лесопилка, шахта, нефть); уровень 2 — крупнее. */
+function specModel(spec: string, level: number, variant: number): BufferGeometry | null {
+  const makers = SPEC_MAKERS[spec];
+  if (!makers) return null;
+  const b = new GeomBuilder();
+  makers[((variant % makers.length) + makers.length) % makers.length](b, new Rng(spec.length * 977 + variant));
+  const g = b.build();
+  if (level >= 2) g.scale(1.08, 1.25, 1.08);
+  return g;
+}
+
 const TABLE: Record<string, Maker[][]> = { res: RES, com: COM, ind: [IND[0], [...IND[1], ...IND[2]], OFFICES] };
 
 /** Детали поверх базовой постройки: размещаются по габаритному ящику готовой геометрии (крыша, фасад +Z). */
@@ -410,8 +519,8 @@ function decorate(zone: string, level: number, deco: number, r: Rng, box: Box3, 
  * Геометрия здания зоны: `level` — плотность (1 низкая … 3 высокая), `wealth` — благосостояние ★1..3: богаче — крупнее и с деталями
  * (балконы, вывески, ограды и т. п.). Новые зоны без модели рисуются как простая коробка.
  */
-export function zoneModel(zone: string, level: number, variant: number, wealth = 1): BufferGeometry {
-  return shareGaps(() => buildZone(zone, level, variant, wealth));
+export function zoneModel(zone: string, level: number, variant: number, wealth = 1, spec = ''): BufferGeometry {
+  return shareGaps(() => (spec && specModel(spec, level, variant)) || buildZone(zone, level, variant, wealth));
 }
 
 function buildZone(zone: string, level: number, variant: number, wealth: number): BufferGeometry {
