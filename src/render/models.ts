@@ -1,7 +1,7 @@
 import { BufferGeometry } from 'three';
 import { Rng } from '../core/Rng';
 import { CELL } from '../world/World';
-import { currentLod, GeomBuilder, mergeParts } from './GeomBuilder';
+import { currentLod, GeomBuilder, mergeParts, shareGaps } from './GeomBuilder';
 
 type ModelFactory = (rng: Rng) => BufferGeometry;
 
@@ -199,6 +199,10 @@ serviceModels.set('taxidepot', () => {
 
 /** Геометрия службы по ключу модели (fallback — серая коробка). */
 export function serviceModel(key: string, w: number, h: number, upgrades: string[] = []): BufferGeometry {
+  return shareGaps(() => buildService(key, w, h, upgrades));
+}
+
+function buildService(key: string, w: number, h: number, upgrades: string[]): BufferGeometry {
   const f = serviceModels.get(key);
   if (!upgrades.length) return f ? f(new Rng(1)) : new GeomBuilder().box(w * CELL - 1, 4, h * CELL - 1, 0, 0, 0, 0xb0b4b8).build();
   // базовая модель + детали улучшений в одной геометрии

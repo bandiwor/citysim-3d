@@ -185,3 +185,11 @@ strong {
     display: none;
   }
 }
+/* тонкий разделитель между подгруппами раздела в панели строительства */
+.tb-sep {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 3px;
+  background: linear-gradient(180deg, transparent, rgba(160, 190, 230, 0.32) 20%, rgba(160, 190, 230, 0.32) 80%, transparent);
+}

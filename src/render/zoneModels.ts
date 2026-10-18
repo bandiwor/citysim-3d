@@ -1,6 +1,6 @@
 import type { BufferGeometry, Box3 } from 'three';
 import { Rng } from '../core/Rng';
-import { GeomBuilder, mergeParts } from './GeomBuilder';
+import { GeomBuilder, mergeParts, shareGaps } from './GeomBuilder';
 
 const FLOOR = 3;
 const W = 0xffffff;
@@ -411,6 +411,10 @@ function decorate(zone: string, level: number, deco: number, r: Rng, box: Box3, 
  * (балконы, вывески, ограды и т. п.). Новые зоны без модели рисуются как простая коробка.
  */
 export function zoneModel(zone: string, level: number, variant: number, wealth = 1): BufferGeometry {
+  return shareGaps(() => buildZone(zone, level, variant, wealth));
+}
+
+function buildZone(zone: string, level: number, variant: number, wealth: number): BufferGeometry {
   const levels = TABLE[zone];
   const makers = levels?.[Math.min(level, levels.length) - 1];
   const b = new GeomBuilder();

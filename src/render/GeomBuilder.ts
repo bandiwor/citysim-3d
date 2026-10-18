@@ -39,6 +39,20 @@ export function withLod<T>(lod: number, fn: () => T): T {
   }
 }
 
+/** Коробки, общие для нескольких сборщиков одной модели (база + отделка + улучшения): зазоры подбираются с учётом всех. */
+let sharedBoxes: BoxRec[] | null = null;
+
+/** Собрать модель из нескольких GeomBuilder так, чтобы их детали не мерцали друг о друга. */
+export function shareGaps<T>(fn: () => T): T {
+  if (sharedBoxes) return fn();
+  sharedBoxes = [];
+  try {
+    return fn();
+  } finally {
+    sharedBoxes = null;
+  }
+}
+
 export function currentLod(): number {
   return buildLod;
 }
@@ -78,11 +92,41 @@ export class GeomBuilder {
   private _boxes: BoxRec[] = [];
   private _roofs: { x: number; y: number; z: number; w: number; d: number }[] = [];
   private _enrich = true;
+  /** счётчик коробок: каждая получает свой микрозазор, чтобы грани соседних деталей не совпадали (иначе мерцают) */
+  private _n = 0;
 
   /** Всё, что добавлено внутри fn, — мелкие детали: только в ближней модели. */
   detailed(fn: (b: this) => void): this {
     if (buildLod === 0) fn(this);
     return this;
+  }
+
+  /** Зазор для новой коробки: первый из ряда значений, при котором её грани не лежат в плоскости одноимённых граней других коробок. */
+  private _gap(w: number, h: number, d: number, x: number, y: number, z: number, ry: number, tilted: boolean): number {
+    const start = this._n++;
+    if (tilted) return 0.006 * (1 + ((start * 3) % 11));
+    const near = (a: number, b: number): boolean => Math.abs(a - b) < 0.004;
+    const over = (a0: number, a1: number, b0: number, b1: number): boolean => Math.min(a1, b1) - Math.max(a0, b0) > 0.01;
+    for (let k = 0; k < 11; k++) {
+      const e = 0.006 * (1 + (((start + k) * 3) % 11));
+      const W = (w + e) / 2;
+      const D = (d + e) / 2;
+      const top = y + h + e / 2;
+      const clash = [...this._boxes, ...(sharedBoxes ?? [])].some((b) => {
+        if (Math.abs(b.ry - ry) > 1e-6) return false;
+        const bw = b.w / 2;
+        const bd = b.d / 2;
+        const ox = over(x - W, x + W, b.x - bw, b.x + bw);
+        const oz = over(z - D, z + D, b.z - bd, b.z + bd);
+        const oy = over(y, top, b.y, b.y + b.h);
+        if (ox && oz && near(top, b.y + b.h)) return true;
+        if (oy && oz && (near(x - W, b.x - bw) || near(x + W, b.x + bw))) return true;
+        if (oy && ox && (near(z - D, b.z - bd) || near(z + D, b.z + bd))) return true;
+        return false;
+      });
+      if (!clash) return e;
+    }
+    return 0.006 * (1 + ((start * 3) % 11));
   }
 
   /** Отключить автодетали (для моделей, где они не к месту: машины, деревья, мелкие предметы). */
@@ -94,6 +138,11 @@ export class GeomBuilder {
   /** Коробка: x,z — центр, y — низ. */
   box(w: number, h: number, d: number, x: number, y: number, z: number, color: number, o: PartOptions = {}): this {
     if (o.detail && buildLod > 0) return this;
+    // микрозазор 6…66 мм: подбирается так, чтобы ни одна грань не совпала с гранью уже добавленной детали (иначе мерцает)
+    const e = this._gap(w, h, d, x, y, z, o.ry ?? 0, !!(o.rx || o.rz));
+    w += e;
+    d += e;
+    h += e / 2;
     if (!o.rx && !o.rz) this._boxes.push({ w, h, d, x, y, z, ry: o.ry ?? 0, color, windows: !!o.windows });
     const g = new BoxGeometry(w, h, d);
     const uv = g.getAttribute('uv');
@@ -202,7 +251,7 @@ export class GeomBuilder {
       const at = (lx: number, lz: number): [number, number] => [b.x + lx * c + lz * sn, b.z - lx * sn + lz * c];
       const top = b.y + b.h;
       // цоколь
-      if (b.y < 0.6) this.box(b.w + 0.16, Math.min(0.55, b.h * 0.15), b.d + 0.16, b.x, b.y, b.z, 0x8f8a82, o);
+      if (b.y < 0.6) this.box(b.w + 0.32, Math.min(0.55, b.h * 0.15), b.d + 0.32, b.x, b.y, b.z, 0x8f8a82, o);
       // межэтажные карнизы (у высоток — реже)
       const floors = Math.floor(b.h / 3);
       const every = floors > 12 ? 4 : floors > 4 ? 2 : 1;
@@ -210,7 +259,7 @@ export class GeomBuilder {
       // угловые пилястры у многоэтажных объёмов: дают рельеф фасаду
       if (b.h >= 6) {
         for (const [lx, lz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as [number, number][]) {
-          const [px, pz] = at(lx * (b.w / 2 - 0.12), lz * (b.d / 2 - 0.12));
+          const [px, pz] = at(lx * (b.w / 2 - 0.07), lz * (b.d / 2 - 0.07));
           this.box(0.36, b.h - 0.1, 0.36, px, b.y + 0.05, pz, mix(b.color, 0.9), o);
         }
       }
@@ -258,8 +307,10 @@ export class GeomBuilder {
 
   build(): BufferGeometry {
     if (this._enrich && buildLod === 0) this._details();
+    sharedBoxes?.push(...this._boxes);
     this._boxes = [];
     this._roofs = [];
+    this._n = 0;
     const merged = mergeGeometries(this._parts, false);
     for (const p of this._parts) p.dispose();
     this._parts = [];

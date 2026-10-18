@@ -21,3 +21,13 @@ describe('SVG-иконки', () => {
     expect(names.filter((n) => !hasIcon(n))).toEqual([]);
   });
 });
+
+describe('раскладка панели строительства', () => {
+  it('каждый пункт и раздел описан в раскладке (новое не «теряется» в конце)', async () => {
+    const { TOOLBAR_LAYOUT, CATEGORY_LAYOUT } = await import('../src/data/toolbarLayout');
+    const g = createGame();
+    const listed = new Set(Object.values(TOOLBAR_LAYOUT).flat(2));
+    expect(g.toolbar.all().filter((i) => !listed.has(i.id) || !TOOLBAR_LAYOUT[i.category]?.flat().includes(i.id)).map((i) => i.id)).toEqual([]);
+    expect(g.categories.filter((c) => !CATEGORY_LAYOUT.flat().includes(c.id)).map((c) => c.id)).toEqual([]);
+  });
+});

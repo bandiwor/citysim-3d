@@ -1,6 +1,7 @@
 import type { Game } from '../core/Game';
-import type { Tool } from '../core/Tool';
+import type { Tool, ToolbarItem } from '../core/Tool';
 import { fmtNumber, t } from '../i18n';
+import { CATEGORY_LAYOUT, layoutGroups } from '../data/toolbarLayout';
 import { h } from './dom';
 import { toolIcon } from './icons';
 
@@ -17,10 +18,15 @@ export class Toolbar {
   private _tip = h('div', { class: 'tb-tip', style: 'display:none' });
 
   constructor(private _game: Game, private _getTool: () => Tool | null) {
-    for (const c of _game.categories) {
-      const b = h('button', { class: 'btn cat', title: t(`category.${c.id}.name`), onclick: () => this._toggle(c.id) }, h('span', { class: 'ic' }, toolIcon(c.id, c.icon)), h('span', { class: 'lb', text: t(`category.${c.id}.name`) }));
-      this._catBtns.set(c.id, b);
-      this._cats.append(b);
+    const cats = layoutGroups('', _game.categories, CATEGORY_LAYOUT);
+    for (const [gi, group] of cats.entries()) {
+      if (gi > 0) this._cats.append(h('span', { class: 'tb-sep' }));
+      for (const c of group) {
+        const name = t(`category.${c.id}.name`);
+        const b = h('button', { class: 'btn cat', title: name, onclick: () => this._toggle(c.id) }, h('span', { class: 'ic' }, toolIcon(c.id, c.icon)), h('span', { class: 'lb', text: name }));
+        this._catBtns.set(c.id, b);
+        this._cats.append(b);
+      }
     }
     for (const row of [this._items, this._cats, this._options]) {
       // перетаскивание ряда мышью/пером (палец листает сам: touch-action: pan-x)
@@ -115,28 +121,41 @@ export class Toolbar {
     this._items.style.display = this._open ? 'flex' : 'none';
     for (const [cid, b] of this._catBtns) b.classList.toggle('active', cid === this._open);
     if (!this._open) return;
-    for (const it of this._game.toolbar.all().filter((i) => i.category === this._open)) {
-      const b = h(
-        'button',
-        { class: 'btn item', title: it.descKey ? t(it.descKey) : t(it.nameKey), onclick: () => {
+    const groups = layoutGroups(this._open, this._game.toolbar.all().filter((i) => i.category === this._open));
+    for (const [gi, group] of groups.entries()) {
+      // тонкий разделитель между подгруппами раздела (полиция | пожарные, малые | крупные…)
+      if (gi > 0) this._items.append(h('span', { class: 'tb-sep' }));
+      for (const it of group) this._addItem(it);
+    }
+    this._affordable();
+    this._markActive(this._getTool()?.id ?? '');
+  }
+
+  /** Кнопка пункта раздела: значок, название, цена либо замок. */
+  private _addItem(it: ToolbarItem): void {
+    const b = h(
+      'button',
+      {
+        class: 'btn item',
+        title: it.descKey ? t(it.descKey) : t(it.nameKey),
+        onclick: () => {
           this._game.bus.emit('tool:request', it.id);
           // на телефоне после выбора инструмента ряд сворачивается, чтобы не загораживать карту
           if (matchMedia('(pointer: coarse)').matches) this.setCollapsed(true);
         },
-        },
-        h('span', { class: 'ic' }, toolIcon(it.id, it.icon)),
-        h('span', { class: 'nm', text: t(it.nameKey) }),
-        it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
-        h('span', { class: 'lock', text: '' }),
-      );
-      b.addEventListener('pointerenter', (e) => { if ((e as PointerEvent).pointerType !== 'touch') this._showTip(it.id, b); });
-      b.addEventListener('pointerleave', () => (this._tip.style.display = 'none'));
-      this._itemBtns.set(it.id, b);
-      this._items.append(b);
-      this._lockState(it.id, b);
-    }
-    this._affordable();
-    this._markActive(this._getTool()?.id ?? '');
+      },
+      h('span', { class: 'ic' }, toolIcon(it.id, it.icon)),
+      h('span', { class: 'nm', text: t(it.nameKey) }),
+      it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
+      h('span', { class: 'lock', text: '' }),
+    );
+    b.addEventListener('pointerenter', (e) => {
+      if ((e as PointerEvent).pointerType !== 'touch') this._showTip(it.id, b);
+    });
+    b.addEventListener('pointerleave', () => (this._tip.style.display = 'none'));
+    this._itemBtns.set(it.id, b);
+    this._items.append(b);
+    this._lockState(it.id, b);
   }
 
   /** Подсказка над панелью: название, описание, цена и характеристики здания. */

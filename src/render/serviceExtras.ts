@@ -31,7 +31,9 @@ serviceModels.set('pumpstation', () =>
 serviceModels.set('policehq', () =>
   new GeomBuilder()
     .box(11, 7, 8, 0, 0, -2, 0xdde5f2, { windows: true })
-    .box(11.4, 1, 8.4, 0, 6, -2, 0x2b58b8)
+    // синий пояс-карниз выше крыши корпуса (раньше верх совпадал с крышей и мерцал)
+    .box(11.4, 1.2, 8.4, 0, 6, -2, 0x2b58b8)
+    .box(10.6, 0.08, 7.6, 0, 7, -2, 0x8d949b)
     .box(5, 4.4, 4, 0, 0, 4.4, 0xc9d4e6, { windows: true })
     .box(2.2, 3, 0.3, 0, 0, 6.5, 0x2a3b57)
     .cylinder(0.12, 0.12, 6, 4.6, 7, -2, 0xcfcfcf, 5)
