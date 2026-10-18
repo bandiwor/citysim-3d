@@ -14,6 +14,8 @@ declare module '../core/Game' {
 export interface MissionHooks {
   /** машина приехала к цели */
   onArrive?(v: Vehicle): void;
+  /** такси высадило пассажира в конечной точке `via` */
+  onVia?(v: Vehicle): void;
   /** машина вернулась в здание-базу */
   onReturn?(v: Vehicle): void;
   /** миссия сорвалась (нет пути, машину убрали) */
@@ -77,10 +79,11 @@ export class FleetSystem implements System {
   }
 
   /** Отправляет машину из facility к target и обратно. false — сразу невозможно. */
-  launch(facility: Building, target: Building, color: number, hooks: MissionHooks = {}): boolean {
+  launch(facility: Building, target: Building, color: number, hooks: MissionHooks = {}, via?: Building): boolean {
     const g = this._game;
     const def = effectiveDef(g.services.require(facility.defId), facility.up);
     if (!def.fleet || this.free(facility) <= 0 || !facility.access || !target.access || facility.comp !== target.comp) return false;
+    if (via && (!via.access || via.comp !== facility.comp)) return false;
     const mission: Mission = { facility: facility.id, hooks, vehicle: null, done: false };
     this._out.set(facility.id, (this._out.get(facility.id) ?? 0) + 1);
     this._missions.push(mission);
@@ -90,24 +93,36 @@ export class FleetSystem implements System {
       const v = traffic.spawn(steps, facility.accessS, target.accessS, def.fleet!.kind, color);
       if (!v) return this._finish(mission, true);
       mission.vehicle = v;
-      v.onArrive = () => {
-        hooks.onArrive?.(v);
-        v.wait = Infinity;
-        void net.requestPath(target.access, target.accessS, facility.access, facility.accessS).then((back) => {
+      // этапы пути: база → цель [→ via] → база
+      const legs: Building[] = via ? [target, via, facility] : [target, facility];
+      let leg = 0;
+      const next = (at: Building): void => {
+        const to = legs[leg + 1];
+        void net.requestPath(at.access, at.accessS, to.access, to.accessS).then((p) => {
           if (v.dead) return;
-          if (!traffic.reroute(v, back, target.accessS, facility.accessS)) {
+          if (!traffic.reroute(v, p, at.accessS, to.accessS)) {
             traffic.kill(v);
             return;
           }
           v.wait = 0.8;
-          v.onArrive = () => {
-            hooks.onReturn?.(v);
-            this._finish(mission, false);
-            return false;
-          };
+          leg++;
+          v.onArrive = arrive;
         });
+      };
+      const arrive = (): boolean => {
+        const at = legs[leg];
+        if (leg === legs.length - 1) {
+          hooks.onReturn?.(v);
+          this._finish(mission, false);
+          return false;
+        }
+        if (leg === 0) hooks.onArrive?.(v);
+        else hooks.onVia?.(v);
+        v.wait = Infinity;
+        next(at);
         return true;
       };
+      v.onArrive = arrive;
     });
     return true;
   }

@@ -305,3 +305,56 @@ up('highschool.labs', (b) => b.box(4, 3.4, 3.4, -6, 0.2, -8.6, 0xc4654b, { windo
 up('college.research', (b) => b.cylinder(1.4, 1.6, 10, 7, 0.2, -6, 0xcdd7e0, 10).sphere(1.8, 7, 10.2, -6, 0x7aa3c8));
 up('garden.greenhouse', (b) => b.box(6, 3, 4, 7, 0.5, -10, 0xcfe8f2).prism(6.4, 4.4, 1.4, 7, 3.5, -10, 0xbfd9e6));
 up('sports.stands', (b) => b.box(12, 1.6, 2, 0, 0.2, 5.6, 0xcfd3d6).box(12, 0.3, 2.2, 0, 1.8, 5.6, 0x4a6f93));
+
+up('taxidepot.fleet', (b) => b.box(4, 3.4, 3, 5.2, 0.2, -4.4, 0xf0f2f5).box(4.4, 0.4, 3.4, 5.2, 3.6, -4.4, 0xf2c230));
+
+// ---------------- городские символы ----------------
+
+serviceModels.set('tvtower', () => {
+  const b = slab(new GeomBuilder(), 2, 0xb9bec3);
+  // решётчатая мачта сужается кверху; вверху смотровая площадка и антенна
+  b.cylinder(2.2, 3.2, 10, 0, 0.2, 0, 0xc9cdd2, 8).cylinder(1.4, 2.2, 10, 0, 10.2, 0, 0xc9cdd2, 8).cylinder(0.7, 1.4, 12, 0, 20.2, 0, 0xc9cdd2, 8);
+  b.cylinder(3.2, 2.6, 2.2, 0, 22, 0, 0x8f969c, 12).cylinder(3.4, 3.4, 0.4, 0, 24.2, 0, 0x4a6f93, 12).cylinder(0.25, 0.4, 14, 0, 24.6, 0, 0xd33a3a, 6);
+  b.box(3, 3, 3, 0, 0.2, 5.5, 0x8f969c, { windows: true });
+  return b.build();
+});
+serviceModels.set('clocktower', () => {
+  const b = slab(new GeomBuilder(), 1, 0xcfc7b0);
+  b.box(3.4, 14, 3.4, 0, 0.2, 0, 0xb5513a, { windows: true }).box(4, 0.8, 4, 0, 14.2, 0, 0xe3ddce);
+  for (const [x, z, ry] of [[0, 1.75, 0], [0, -1.75, 0], [1.75, 0, Math.PI / 2], [-1.75, 0, Math.PI / 2]] as [number, number, number][]) b.cylinder(1.3, 1.3, 0.2, x, 11, z, 0xf6f6f2, 16, { rx: Math.PI / 2, ry });
+  b.prism(4, 4, 3.4, 0, 15, 0, 0x4a6f93).sphere(0.4, 0, 18.2, 0, 0xffd966);
+  return b.build();
+});
+serviceModels.set('ferriswheel', () => {
+  const b = slab(new GeomBuilder(), 3, 0x8f959b);
+  // опоры; само колесо вращается в анимации
+  b.box(0.7, 12, 0.7, -2.2, 0.2, -3, 0xd33a3a, {}).box(0.7, 12, 0.7, 2.2, 0.2, -3, 0xd33a3a).box(0.7, 12, 0.7, -2.2, 0.2, 3, 0xd33a3a).box(0.7, 12, 0.7, 2.2, 0.2, 3, 0xd33a3a);
+  b.box(8, 3, 4, 0, 0.2, 8.5, 0xf0e6d2, { windows: true }).box(8.4, 0.5, 4.4, 0, 3.2, 8.5, 0x4a6f93);
+  return b.build();
+});
+serviceModels.set('obelisk', () => {
+  const b = slab(new GeomBuilder(), 1, 0xcfc7b0);
+  b.box(4, 0.8, 4, 0, 0.2, 0, 0xd9d3c3).box(3, 0.8, 3, 0, 1, 0, 0xe3ddce).cylinder(0.9, 1.5, 15, 0, 1.8, 0, 0xece7d9, 4, { ry: Math.PI / 4 }).cone(0.9, 2.2, 0, 16.8, 0, 0xd6b24a, 4);
+  return b.build();
+});
+serviceModels.set('cathedral', () => {
+  const b = slab(new GeomBuilder(), 3, 0xcfc7b0);
+  b.box(9, 8, 15, 0, 0.2, 0, 0xe0d8c6, { windows: true }).prism(9.4, 15.4, 3.6, 0, 8.2, 0, 0x6f7f8a, false);
+  b.box(3.4, 14, 3.4, -2.8, 0.2, 8.8, 0xd5ccb7).box(3.4, 14, 3.4, 2.8, 0.2, 8.8, 0xd5ccb7).cone(2.4, 6, -2.8, 14.2, 8.8, 0x4a6f93, 4).cone(2.4, 6, 2.8, 14.2, 8.8, 0x4a6f93, 4);
+  b.box(2, 3.2, 0.3, 0, 0.2, 7.7, 0x5b3f2a).cylinder(2.2, 2.2, 0.3, 0, 7.4, 7.8, 0x9ec8e8, 14, { rx: Math.PI / 2 });
+  return b.build();
+});
+serviceModels.set('arch', () => {
+  const b = slab(new GeomBuilder(), 2, 0xcfc7b0);
+  b.box(2.6, 11, 4.6, -4, 0.2, 0, 0xe3ddce).box(2.6, 11, 4.6, 4, 0.2, 0, 0xe3ddce).box(11, 3.2, 4.8, 0, 8, 0, 0xece7d9).box(11.4, 0.7, 5.2, 0, 11.2, 0, 0xd6b24a);
+  b.box(0.8, 3, 0.3, -4, 4, 2.4, 0xcfc7b0).box(0.8, 3, 0.3, 4, 4, 2.4, 0xcfc7b0);
+  return b.build();
+});
+serviceModels.set('opera', () => {
+  const b = slab(new GeomBuilder(), 3, 0xcfc7b0);
+  b.box(14, 4, 12, 0, 0.2, 0, 0xf0e6d2, { windows: true }).box(14.4, 0.6, 12.4, 0, 4.2, 0, 0xd6b24a);
+  b.sphere(5, 0, 4.4, -1, 0xe9e2cf).cone(1.4, 4, 0, 9.4, -1, 0xd6b24a, 8);
+  for (let i = -3; i <= 3; i++) b.cylinder(0.35, 0.35, 4, i * 1.9, 0.2, 6.3, 0xfaf7ee, 6);
+  b.box(14, 0.5, 2.4, 0, 4.2, 6.5, 0xd6b24a);
+  return b.build();
+});

@@ -107,3 +107,14 @@ export function isBuilding(b: Building): boolean {
 export function isIdle(b: Building): boolean {
   return b.abandoned || isBuilding(b);
 }
+
+/** Посаженное игроком дерево, куст или камень. */
+export interface Prop {
+  id: number;
+  kind: string;
+  x: number;
+  z: number;
+  /** масштаб */
+  s: number;
+  rot: number;
+}

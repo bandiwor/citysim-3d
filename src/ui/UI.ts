@@ -11,7 +11,7 @@ import { FirstPerson } from '../render/FirstPerson';
 import { cityBody, routesBody } from './TransitPanel';
 import { advisorList, eventBody, goalsBody, policiesBody } from './ProgressPanel';
 import { Input } from './Input';
-import { budgetBody, helpBody, Inspector, Modal, settingsBody, statsBody } from './Panels';
+import { budgetBody, educationBody, helpBody, Inspector, Modal, settingsBody, statsBody } from './Panels';
 import { Toolbar } from './Toolbar';
 
 /** Сборка интерфейса поверх канваса. Пересобирается при смене языка. */
@@ -57,6 +57,7 @@ export class UI {
       if (this.fp.active) return;
       if (e.code === 'KeyG' && !e.ctrlKey) this.openStats();
       if (e.code === 'KeyT') this.openRoutes();
+      if (e.code === 'KeyE') this.openEducation();
       if (e.code === 'KeyJ') this.openGoals();
       if (e.code === 'KeyK') this.openPolicies();
       if (e.code === 'KeyH') this.openCity();
@@ -80,6 +81,7 @@ export class UI {
       menu: () => this._menu(),
       budget: () => this.openBudget(),
       stats: () => this.openStats(),
+      education: () => this.openEducation(),
       maps: (btn) => this._toggleMaps(btn),
       routes: () => this.openRoutes(),
       city: () => this.openCity(),
@@ -242,6 +244,11 @@ export class UI {
     this._root.classList.toggle('fp-mode', on);
     this._fpBar.style.display = on ? 'flex' : 'none';
     if (on) this._game.bus.emit('select', null);
+  }
+
+  openEducation(): void {
+    const s = educationBody(this._game);
+    this._modal.open(`🎓 ${t('modal.education')}`, s.el, () => s.tick());
   }
 
   openStats(): void {

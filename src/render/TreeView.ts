@@ -58,12 +58,21 @@ export class TreeView implements View {
         m.makeScale(s, sy, s).setPosition(wx, w.heightAt(wx, wz) - 0.1, wz);
         const shade = 0.7 + rng.next() * 0.5;
         const id = i * PER_CELL + k;
+        if (w.erasedTrees.has(id)) continue;
         const color = col.setRGB(shade * 0.9, shade, shade * 0.85).getHex();
         this._pool.set(id, m, color);
         this._trees.push({ id, x: wx, z: wz, s, sy, color });
       }
     }
     _game.bus.on('terrain:changed', () => (this._terrainDirty = true));
+    _game.bus.on('props:erase', (e) => {
+      this._trees = this._trees.filter((t) => {
+        if (Math.hypot(t.x - e.x, t.z - e.z) > e.r) return true;
+        w.erasedTrees.add(t.id);
+        this._pool.remove(t.id);
+        return false;
+      });
+    });
   }
 
   private _blocked(x: number, z: number): boolean {

@@ -37,8 +37,8 @@ export default defineConfig(({ mode }) => ({
     minify: 'terser',
     sourcemap: false,
     chunkSizeWarningLimit: 900,
-    // Один чанк: мангл свойств должен быть согласованным во всём бандле.
-    rollupOptions: { output: { manualChunks: undefined } },
+    // Библиотеки (three.js) — отдельный чанк; точка входа крошечная и подгружает игру асинхронно (экран загрузки в index.html).
+    rollupOptions: { output: { manualChunks: (id: string) => (id.includes('node_modules') ? 'vendor' : undefined) } },
     terserOptions: {
       ecma: 2022,
       toplevel: true,

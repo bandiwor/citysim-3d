@@ -58,7 +58,10 @@ export class GrowthSystem implements System {
       Math.max(0, rate - h.taxFree) * h.taxPenalty +
       (b.powered ? h.powerOn : h.powerOff) +
       (b.watered ? h.waterOn : h.waterOff);
-    if (g.zoneTypes.get(b.zone)?.housing) v += h.unemployment * st.unemployment * Math.min(1, st.population / h.unemploymentPop);
+    if (g.zoneTypes.get(b.zone)?.housing) {
+      v += h.unemployment * st.unemployment * Math.min(1, st.population / h.unemploymentPop);
+      v += g.config.education.overqualified * st.overqualified * Math.min(1, st.population / h.unemploymentPop);
+    }
     // невывезенный мусор, тела и ограбления портят настроение
     const gc = g.config.garbage;
     if (b.garbage > gc.cap * gc.unhappyAt) v += gc.unhappy;

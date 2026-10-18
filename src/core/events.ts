@@ -5,6 +5,10 @@ export interface GameEvents {
   'zones:changed': void;
   'stops:changed': void;
   'terrain:changed': void;
+  /** изменились посаженные игроком деревья и камни */
+  'props:changed': void;
+  /** ластик природы стёр всё в круге (процедурные деревья тоже) */
+  'props:erase': { x: number; z: number; r: number };
   /** войти в режим от первого лица в точке */
   'fp:enter': { x: number; z: number };
   'fp:exit': void;

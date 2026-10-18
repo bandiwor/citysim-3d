@@ -27,6 +27,9 @@ import { EventSystem } from '../sim/EventSystem';
 import { AdvisorSystem } from '../sim/AdvisorSystem';
 import { ConstructionSystem } from '../sim/ConstructionSystem';
 import { DiseaseSystem } from '../sim/DiseaseSystem';
+import { PropSystem } from '../sim/PropSystem';
+import { NatureTool } from '../tools/NatureTools';
+import { TaxiSystem } from '../sim/TaxiSystem';
 import { FleetSystem } from '../sim/FleetSystem';
 import { SanitationSystem } from '../sim/SanitationSystem';
 import { registerOverlays } from './overlays';
@@ -94,14 +97,30 @@ export const zonesFeature: Feature = {
   install(g) {
     for (const z of ZONES) g.zoneTypes.add({ ...z });
     g.addCategory({ id: 'zones', icon: '🏘️' });
+    // отдельная кнопка на каждую плотность: малая / средняя / высокая
+    const icons: Record<string, string[]> = { res: ['🏡', '🏘️', '🏙️'], com: ['🏪', '🏬', '🏢'], ind: ['🔧', '🏭', '💼'] };
     for (const z of g.zoneTypes.all()) {
-      g.toolbar.add({ id: `zone:${z.id}`, category: 'zones', nameKey: `zone.${z.id}.name`, descKey: `zone.${z.id}.desc`, icon: z.icon, cost: z.cost, createTool: (game) => new ZoneTool(game, z.id) });
+      for (let n = 0; n < 3; n++) {
+        g.toolbar.add({ id: `zone:${z.id}:${n}`, category: 'zones', nameKey: `density.${z.id}.${n}.name`, descKey: `density.${z.id}.${n}.desc`, icon: icons[z.id]?.[n] ?? z.icon, cost: z.cost, createTool: (game) => new ZoneTool(game, z.id, n) });
+      }
     }
     g.toolbar.add({ id: 'zone:none', category: 'zones', nameKey: 'tool.dezone.name', descKey: 'tool.dezone.desc', icon: '🧹', hotkey: 'KeyZ', createTool: (game) => new ZoneTool(game, null) });
   },
 };
 
-const CATEGORY_ICONS: Record<string, string> = { power: '⚡', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳', garbage: '🗑️', civic: '🏛️' };
+const CATEGORY_ICONS: Record<string, string> = { power: '⚡', water: '💧', safety: '🚓', health: '🏥', education: '🎓', parks: '🌳', garbage: '🗑️', civic: '🏛️', landmarks: '🗽' };
+
+export const natureFeature: Feature = {
+  id: 'nature',
+  install(g) {
+    g.addSystem(new PropSystem());
+    g.addCategory({ id: 'nature', icon: '🌲' });
+    const modes: [string, string][] = [['single', '🌳'], ['brush', '🌲'], ['erase', '🧽']];
+    for (const [mode, icon] of modes) {
+      g.toolbar.add({ id: `prop:${mode}`, category: 'nature', nameKey: `tool.prop.${mode}.name`, descKey: `tool.prop.${mode}.desc`, icon, createTool: (game) => new NatureTool(game, mode as 'single' | 'brush' | 'erase') });
+    }
+  },
+};
 
 export const servicesFeature: Feature = {
   id: 'services',
@@ -123,6 +142,7 @@ export const trafficFeature: Feature = {
   install(g) {
     g.addSystem(new TrafficSystem());
     g.addSystem(new FleetSystem());
+    g.addSystem(new TaxiSystem());
     g.addSystem(new TransitSystem());
     g.addCategory({ id: 'transit', icon: '🚌' });
     g.toolbar.add({ id: 'stop', category: 'transit', nameKey: 'tool.stop.name', descKey: 'tool.stop.desc', icon: '🚏', cost: g.config.economy.stopCost, createTool: (game) => new StopTool(game) });

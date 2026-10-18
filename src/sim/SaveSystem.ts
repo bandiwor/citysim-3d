@@ -98,6 +98,9 @@ export interface SaveData {
   mods?: Modifier[];
   /** доли образованных: [с образованием, с высшим] */
   edu?: [number, number];
+  /** посаженные растения [вид, x, z, масштаб, поворот] и стёртые процедурные деревья */
+  props?: [string, number, number, number, number][];
+  et?: number[];
   event?: { id: string; day: number } | null;
 }
 
@@ -196,6 +199,8 @@ export class SaveSystem implements System {
       objectives: { active: g.get('objectives').active, completed: g.get('objectives').completed },
       mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:')),
       edu: [g.get('stats').eduEducated, g.get('stats').eduHigh],
+      ...(w.props.size ? { props: [...w.props.values()].map((p) => [p.kind, r1(p.x), r1(p.z), Math.round(p.s * 100) / 100, Math.round(p.rot * 100) / 100] as [string, number, number, number, number]) } : {}),
+      ...(w.erasedTrees.size ? { et: [...w.erasedTrees] } : {}),
       event: g.get('events').pending,
     };
   }
@@ -220,6 +225,9 @@ export class SaveSystem implements System {
       for (const [k, h] of d.terrain) w.setVertexHeight(k % n1, Math.floor(k / n1), h);
       w.reclassify(0, 0, w.size, w.size);
     }
+    for (const [kind, x, z, s, rot] of d.props ?? []) w.props.set(w.newId(), { id: 0, kind, x, z, s, rot });
+    for (const [id, p] of [...w.props]) p.id = id;
+    for (const id of d.et ?? []) w.erasedTrees.add(id);
     for (const n of d.nodes) w.graph.restoreNode(n.id, n.x, n.z, !!n.lt);
     for (const e of d.edges) {
       const type = g.roadTypes.get(e.t);

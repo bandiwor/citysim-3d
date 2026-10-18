@@ -72,6 +72,8 @@ export class TransitSystem implements System {
   private _netVersion = -1;
   private _dirty = true;
   private _served = new Map<number, number>();
+  /** средняя заполненность очередей на обслуживаемых остановках 0..1 */
+  crowding = 0;
 
   init(game: Game): void {
     this._game = game;
@@ -211,7 +213,10 @@ export class TransitSystem implements System {
       const d = Math.hypot(s.x - x, s.z - z);
       if (d < r) cov += (1 - d / r) * q;
     }
-    return Math.min(c.shareMax * 1.5, Math.min(c.shareMax, Math.min(1, cov) * c.shareFactor) * this._game.get('mods').mul('transitShare'));
+    // чем хуже на дорогах, тем охотнее пересаживаются; давка на остановках отпугивает
+    const jam = 1 + c.congestionBoost * (1 - this._game.get('traffic').flow);
+    const comfort = 1 - c.crowdPenalty * this.crowding;
+    return Math.min(c.shareMax * 1.5, Math.min(c.shareMax * 1.25, Math.min(1, cov) * c.shareFactor * jam * comfort) * this._game.get('mods').mul('transitShare'));
   }
 
   upkeep(): number {
@@ -317,6 +322,10 @@ export class TransitSystem implements System {
       const q = Math.min(1, alive / Math.max(1, r.buses));
       for (const id of r.stops) this._served.set(id, Math.max(this._served.get(id) ?? 0, q));
     }
+    // давка на остановках отпугивает пассажиров
+    let crowd = 0;
+    for (const id of this._served.keys()) crowd += Math.min(1, this.waitingAt(id) / this._game.config.transit.maxWaiting);
+    this.crowding = this._served.size ? crowd / this._served.size : 0;
   }
 
   /** Пересчитывает пути между остановками каждого маршрута (асинхронно). */

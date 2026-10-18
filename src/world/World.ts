@@ -1,6 +1,6 @@
 import { CELL } from '../config/constants';
 import type { GameConfig } from '../config/gameConfig';
-import type { Building, BusStop } from '../core/types';
+import type { Building, BusStop, Prop } from '../core/types';
 import { obbContains, type Obb } from './geometry';
 import { RoadGraph } from './RoadGraph';
 import { SpatialHash } from './SpatialHash';
@@ -22,6 +22,10 @@ export class World {
   readonly zones = new ZoneGrid();
   readonly buildings = new Map<number, Building>();
   stops: BusStop[] = [];
+  /** деревья и камни, посаженные игроком */
+  readonly props = new Map<number, Prop>();
+  /** стёртые ластиком процедурные деревья (id из TreeView) */
+  readonly erasedTrees = new Set<number>();
   /** изменённые игроком вершины рельефа: индекс → высота (для сохранения) */
   readonly terrainEdits = new Map<number, number>();
   /** растёт при добавлении/удалении зданий — для кэшей */

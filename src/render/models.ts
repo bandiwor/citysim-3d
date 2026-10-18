@@ -20,11 +20,10 @@ export { zoneModel, zoneVariantCount } from './zoneModels';
 
 serviceModels.set('police', () =>
   new GeomBuilder()
-    .box(6.4, 5, 6.2, 0, 0, 0, 0xdde5f2, { windows: true })
+    // стены заканчиваются там, где начинается карниз (иначе их крыша совпадает с крышей карниза и мерцает)
+    .box(6.4, 4, 6.2, 0, 0, 0, 0xdde5f2, { windows: true })
     .box(6.6, 1, 6.4, 0, 4, 0, 0x2b58b8)
     .box(1.6, 2.4, 0.3, 0, 0, 3.2, 0x2a3b57)
-    .box(0.6, 0.5, 0.6, -0.5, 5, 0, 0xd33a3a)
-    .box(0.6, 0.5, 0.6, 0.5, 5, 0, 0x3a6ad3)
     .build(),
 );
 serviceModels.set('fire', () =>
@@ -183,6 +182,21 @@ serviceModels.set('busdepot', () =>
     .build(),
 );
 
+serviceModels.set('taxidepot', () => {
+  const b = new GeomBuilder()
+    .box(CELL * 2 - 1, 0.2, CELL * 2 - 1, 0, 0, 0, 0x595e63)
+    .box(10, 4, 5, 0, 0.2, -4.4, 0xf0f2f5, { windows: true })
+    .box(10.4, 0.5, 5.4, 0, 4.2, -4.4, 0xf2c230)
+    .box(3.4, 0.9, 0.3, 0, 4.7, -1.9, 0xf2c230)
+    .box(2.4, 3.2, 0.3, -2.6, 0.2, -1.8, 0x2a3b57)
+    .box(2.4, 3.2, 0.3, 2.6, 0.2, -1.8, 0x2a3b57);
+  // клетчатая полоса у входа
+  for (let i = 0; i < 10; i++) b.box(1, 0.12, 0.5, -4.5 + i, 0.25, 0.4 + (i % 2) * 0.5, i % 2 ? 0x111111 : 0xffffff);
+  // припаркованные такси
+  for (const x of [-3.5, 0, 3.5]) b.box(3.2, 0.7, 1.6, x, 0.3, 4, 0xf2c230).box(1.6, 0.6, 1.4, x, 0.95, 4, 0xf2c230);
+  return b.build();
+});
+
 /** Геометрия службы по ключу модели (fallback — серая коробка). */
 export function serviceModel(key: string, w: number, h: number, upgrades: string[] = []): BufferGeometry {
   const f = serviceModels.get(key);
@@ -238,6 +252,13 @@ function wheels(b: GeomBuilder, pts: [number, number][], r = 0.4): void {
 export function policeModel(): BufferGeometry {
   const b = new GeomBuilder().box(3.6, 0.8, 1.7, 0, 0.35, 0, 0xf2f4f7).box(1.7, 0.7, 1.45, -0.2, 1.1, 0, 0x30415e).box(0.9, 0.9, 0.12, 0, 0.4, 0.86, 0x2b58b8).box(0.9, 0.9, 0.12, 0, 0.4, -0.86, 0x2b58b8);
   b.box(0.3, 0.2, 0.5, -0.2, 1.8, 0.35, 0xd33a3a).box(0.3, 0.2, 0.5, -0.2, 1.8, -0.35, 0x3a6ad3);
+  wheels(b, [[1.1, 0.85], [1.1, -0.85], [-1.1, 0.85], [-1.1, -0.85]], 0.36);
+  return b.build();
+}
+
+export function taxiModel(): BufferGeometry {
+  const b = new GeomBuilder().box(3.7, 0.8, 1.7, 0, 0.35, 0, 0xf2c230).box(1.8, 0.7, 1.5, -0.2, 1.1, 0, 0xf2c230).box(1.7, 0.45, 1.52, -0.2, 1.15, 0, 0x30415e).box(0.7, 0.25, 0.4, -0.2, 1.8, 0, 0xfff3b0);
+  b.box(3.7, 0.12, 0.2, 0, 0.55, 0.86, 0x222222).box(3.7, 0.12, 0.2, 0, 0.55, -0.86, 0x222222);
   wheels(b, [[1.1, 0.85], [1.1, -0.85], [-1.1, 0.85], [-1.1, -0.85]], 0.36);
   return b.build();
 }

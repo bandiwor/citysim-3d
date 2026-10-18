@@ -162,7 +162,7 @@ animations.set('coal', (b, g) => {
 animations.set('gas', (b, g) => [smoke(-4.8, 13.4, -4.6, has(g, b, 'recovery') ? 0.4 : 0.8)]);
 animations.set('incinerator', (b, g) => [smoke(2.4, 19.6, -4, has(g, b, 'filters') ? 0.35 : 1)]);
 animations.set('crematorium', (b, g) => [smoke(2.6, 10.6, -1.6, has(g, b, 'filter') ? 0.3 : 0.7)]);
-animations.set('police', () => [beacon(0, 5.5, 0)]);
+animations.set('police', () => [beacon(0, 5.4, 0)]);
 animations.set('policehq', () => [beacon(0, 7.4, -2)]);
 animations.set('fire', () => [beacon(0, 5.1, 0.3, 0xff2a2a, 0xffb02a)]);
 animations.set('firehq', () => [beacon(0, 6.2, -2.2, 0xff2a2a, 0xffb02a), beacon(5, 12.6, -5, 0xff2a2a, 0xffffff)]);
@@ -185,6 +185,47 @@ animations.set('firehelidepot', () => [beacon(-2.6, 5.2, -3.6, 0xff2a2a, 0xffb02
 animations.set('firepost', () => [beacon(0, 3.9, 0, 0xff2a2a, 0xffb02a)]);
 animations.set('policepost', () => [beacon(0, 4.1, 0)]);
 animations.set('medcenter', () => [beacon(3, 6, -1.4, 0xff3030, 0xffffff)]);
+/** Колесо обозрения: обод со спицами и кабинками медленно вращается. */
+function ferris(x: number, y: number, z: number, r: number): Part {
+  const g = new Group();
+  g.position.set(x, y, z);
+  const wheel = new Group();
+  const cabins: Mesh[] = [];
+  const rimMat = new MeshLambertMaterial({ color: 0xf2f2f2 });
+  const n = 12;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const spoke = new Mesh(new BoxGeometry(0.18, r, 0.18).translate(0, r / 2, 0), rimMat);
+    spoke.rotation.z = a;
+    wheel.add(spoke);
+    const cab = new Mesh(new BoxGeometry(1.1, 1.1, 1.5), new MeshLambertMaterial({ color: [0xd33a3a, 0x3a6ad3, 0xf2c230, 0x3aa35b][i % 4] }));
+    cab.position.set(Math.sin(a) * -r, Math.cos(a) * r, 0);
+    cabins.push(cab);
+    wheel.add(cab);
+  }
+  // обод из 24 коротких сегментов
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const seg = new Mesh(new BoxGeometry(2 * r * Math.sin(Math.PI / 24) + 0.05, 0.22, 0.22), rimMat);
+    seg.position.set(Math.sin(a) * -r, Math.cos(a) * r, 0);
+    seg.rotation.z = a;
+    wheel.add(seg);
+  }
+  g.add(wheel);
+  return {
+    obj: g,
+    tick(_t, dt) {
+      wheel.rotation.z -= dt * 0.18;
+      // кабинки остаются вертикальными
+      for (const c of cabins) c.rotation.z = -wheel.rotation.z;
+    },
+  };
+}
+
+animations.set('ferriswheel', () => [ferris(0, 13, 0, 9.5)]);
+animations.set('tvtower', () => [beacon(0, 38.8, 0, 0xff2a2a, 0xffffff)]);
+animations.set('opera', () => [flag(0, 15, -1, 0xd6b24a)]);
+animations.set('cathedral', () => [flag(-2.8, 20.2, 8.8, 0xf2f2f2)]);
 animations.set('school', () => [flag(6, 8.2, 5, 0xd33a3a)]);
 
 /** Анимированные детали специальных зданий: дым, лопасти, мигалки, фонтаны, чайки. */

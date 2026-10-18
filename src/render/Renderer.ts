@@ -24,6 +24,7 @@ import { RoadView } from './RoadView';
 import { RouteView } from './RouteView';
 import { TrafficLightView } from './TrafficLightView';
 import { TerrainView } from './TerrainView';
+import { PropView } from './PropView';
 import { TreeView } from './TreeView';
 import { VehicleView } from './VehicleView';
 import type { View } from './View';
@@ -91,6 +92,7 @@ export class Renderer {
       new AnimatedBuildingsView(this.scene, _game),
       new ConstructionView(this.scene, _game),
       new TreeView(this.scene, _game),
+      new PropView(this.scene, _game),
       new TrafficLightView(this.scene, _game),
       new VehicleView(this.scene, _game),
       this.routes,

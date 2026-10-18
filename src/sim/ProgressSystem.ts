@@ -42,6 +42,8 @@ export class ProgressSystem implements System {
 
   /** Ключ открытия для кнопки панели инструментов по её id. */
   toolKey(toolId: string): string {
+    const m = /^zone:\w+:([12])$/.exec(toolId);
+    if (m) return `density:${m[1]}`;
     return toolId.startsWith('road:') || toolId.startsWith('service:') ? toolId : `tool:${toolId}`;
   }
 

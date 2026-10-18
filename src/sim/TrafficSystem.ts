@@ -12,7 +12,7 @@ declare module '../core/Game' {
   }
 }
 
-export type VehicleKind = 'car' | 'truck' | 'bus' | 'police' | 'garbage' | 'hearse';
+export type VehicleKind = 'car' | 'truck' | 'bus' | 'police' | 'garbage' | 'hearse' | 'taxi';
 
 export interface Vehicle {
   id: number;
@@ -80,6 +80,10 @@ export class TrafficSystem implements System {
   occupancy = new Map<number, number>();
   /** средняя относительная скорость 0..1 */
   flow = 1;
+  /** поездки за последние месяцы: личным транспортом и общественным (для доли пассажиров) */
+  tripsCar = 0;
+  tripsTransit = 0;
+  tripsTaxi = 0;
   private _game!: Game;
   private _nextId = 1;
   private _acc = 0;
@@ -100,6 +104,17 @@ export class TrafficSystem implements System {
 
   init(game: Game): void {
     this._game = game;
+    game.bus.on('time:month', () => {
+      this.tripsCar *= 0.5;
+      this.tripsTransit *= 0.5;
+      this.tripsTaxi *= 0.5;
+    });
+  }
+
+  /** Доля поездок, которые пересели на общественный транспорт (последние месяцы). */
+  get transitModeShare(): number {
+    const n = this.tripsCar + this.tripsTransit;
+    return n > 20 ? this.tripsTransit / n : 0;
   }
 
   get clock(): number {
@@ -253,7 +268,16 @@ export class TrafficSystem implements System {
     const dest = pool[Math.floor(Math.random() * pool.length)];
     if (!dest || dest.comp !== home.comp || dest.comp < 0) return;
     // часть жителей пользуется автобусами: они появятся пассажирами на остановках, а не машинами
-    if (Math.random() < g.get('transit').share(home.x, home.z)) return;
+    if (Math.random() < g.get('transit').share(home.x, home.z)) {
+      this.tripsTransit++;
+      return;
+    }
+    // часть поездок на такси из таксопарка
+    if (g.get('taxi').tryTrip(home, dest)) {
+      this.tripsTaxi++;
+      return;
+    }
+    this.tripsCar++;
     const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
     this._trip(home, dest, 'car', color, (v) => {
       v.onArrive = () => {

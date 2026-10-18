@@ -36,6 +36,12 @@ export class StatsSystem implements System {
   /** рабочие места и занятость по уровню образования [нет, среднее, высшее] */
   jobsByEdu: [number, number, number] = [0, 0, 0];
   fillByEdu: [number, number, number] = [1, 1, 1];
+  /** рабочая сила по образованию [нет, среднее, высшее] */
+  workersByEdu: [number, number, number] = [0, 0, 0];
+  /** доля занятых, работающих ниже своего образования (чуть недовольны) 0..1 */
+  overqualified = 0;
+  /** нехватка образованных: доля незаполненных мест для среднего / высшего образования */
+  shortageByEdu: [number, number] = [0, 0];
   private _game!: Game;
   private _timer = 0;
 
@@ -129,6 +135,13 @@ export class StatsSystem implements System {
     const f1 = j1 > 0 ? Math.min(1, (w1 + spare2) / j1) : 1;
     const spare1 = Math.max(0, w1 + spare2 - j1);
     const f0 = j0 > 0 ? Math.min(1, (w0 + spare1) / j0) : 1;
+    // кто работает ниже своего уровня: лишние высшие занимают места попроще, лишние средние — места без требований
+    const o2a = Math.min(spare2, j1);
+    const o2b = Math.min(spare2 - o2a, j0);
+    const o1 = Math.min(Math.max(0, w1 - Math.max(0, j1 - o2a)), Math.max(0, j0 - o2b));
+    this.workersByEdu = [w0, w1, w2];
+    this.overqualified = Math.min(1, (o2a + o2b + o1) / Math.max(1, Math.min(wf, f0 * j0 + f1 * j1 + f2 * j2)));
+    this.shortageByEdu = [j1 > 0 ? 1 - f1 : 0, j2 > 0 ? 1 - f2 : 0];
     this.jobsByEdu = jobsEdu;
     this.fillByEdu = [f0, f1, f2];
     this.employed = Math.min(wf, f0 * j0 + f1 * j1 + f2 * j2);

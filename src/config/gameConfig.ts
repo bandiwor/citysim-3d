@@ -112,6 +112,11 @@ export const defaultConfig = {
     junctionBusy: 3,
     junctionPenalty: 0.55,
   },
+  nature: {
+    /** радиусы кисти посадки, ед. */
+    brushSizes: [5, 10, 18, 30] as number[],
+    defaultBrush: 1,
+  },
   terraform: {
     /** радиусы кисти, ед. */
     brushSizes: [14, 26, 44],
@@ -207,6 +212,10 @@ export const defaultConfig = {
     highThreshold: 0.3,
     highMul: 1.3,
     maxHigh: 0.55,
+    /** счастье жителей падает, если образованные работают на местах без требований к образованию (× доля таких) */
+    overqualified: -0.07,
+    /** советник предупреждает, если не заполнено столько мест для образованных */
+    shortageWarn: 0.25,
   },
   stats: {
     interval: 0.5,
@@ -239,15 +248,15 @@ export const defaultConfig = {
   },
   garbage: {
     /** мусор в секунду на жителя / рабочее место */
-    perResident: 0.0016,
-    perJob: 0.0024,
+    perResident: 0.0011,
+    perJob: 0.0016,
     /** вызывать мусоровоз при таком количестве мусора */
     dispatchAt: 16,
     /** предел накопления (дальше — свалка во дворе) */
     cap: 60,
-    truckLoad: 110,
+    truckLoad: 260,
     /** радиус, в котором мусоровоз за один заезд забирает мусор у соседних зданий, ед. */
-    sweepRadius: 34,
+    sweepRadius: 46,
     interval: 2,
     /** при мусоре выше этой доли предела падает счастье */
     unhappyAt: 0.6,
@@ -379,6 +388,7 @@ export const defaultConfig = {
       'service:bigpark': 400,
       'service:pumpstation': 400,
       'service:busdepot': 450,
+      'service:taxidepot': 300,
       'service:solar': 600,
       'service:library': 600,
       'service:waterplant': 700,
@@ -393,6 +403,13 @@ export const defaultConfig = {
       'service:university': 2500,
       'service:stadium': 4000,
       'service:monument': 6000,
+      'service:obelisk': 800,
+      'service:clocktower': 1200,
+      'service:arch': 2800,
+      'service:ferriswheel': 3500,
+      'service:cathedral': 4500,
+      'service:tvtower': 5500,
+      'service:opera': 7000,
       'tool:light:add': 250,
       'tool:route': 450,
     } as Record<string, number>,
@@ -433,7 +450,7 @@ export const defaultConfig = {
     /** машин на жителя (верхняя граница числа легковых при данном населении) */
     carsPerPop: 0.07,
     /** длина машин по видам и зазор между ними, ед. */
-    length: { car: 3.6, truck: 5.4, bus: 7.2, police: 3.8, garbage: 5.4, hearse: 4.4 } as Record<string, number>,
+    length: { taxi: 3.7, car: 3.6, truck: 5.4, bus: 7.2, police: 3.8, garbage: 5.4, hearse: 4.4 } as Record<string, number>,
     gap: 1.8,
     busExtra: 40,
     tripsPerPop: 0.0016,
@@ -459,7 +476,16 @@ export const defaultConfig = {
     occupancySync: 0.5,
     flowSmoothing: 0.5,
     offsetDecay: 7,
-    speedMul: { car: [0.9, 1.1], truck: [0.8, 0.8], bus: [0.85, 0.85], police: [1, 1], garbage: [0.8, 0.8], hearse: [0.85, 0.85] } as Record<string, [number, number]>,
+    speedMul: { taxi: [1, 1.1], car: [0.9, 1.1], truck: [0.8, 0.8], bus: [0.85, 0.85], police: [1, 1], garbage: [0.8, 0.8], hearse: [0.85, 0.85] } as Record<string, [number, number]>,
+  },
+  taxi: {
+    /** доля поездок, которую берёт такси, если рядом есть таксопарк со свободной машиной */
+    share: 0.14,
+    shareMax: 0.35,
+    /** макс. расстояние от таксопарка до дома пассажира, ед. */
+    range: 110,
+    fareBase: 6,
+    farePerUnit: 0.09,
   },
   transit: {
     /** радиус охвата остановки, клеток */
@@ -477,6 +503,9 @@ export const defaultConfig = {
     spawnInterval: 7,
     shareMax: 0.5,
     shareFactor: 0.55,
+    /** прирост доли пассажиров при пробках (× потеря скорости потока) и потеря при давке на остановках */
+    congestionBoost: 1.2,
+    crowdPenalty: 0.6,
     stopMergeDistance: 10,
     /** привязка точки маршрута к остановке, ед. */
     routeSnap: 14,

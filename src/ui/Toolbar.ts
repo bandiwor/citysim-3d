@@ -20,6 +20,15 @@ export class Toolbar {
       this._catBtns.set(c.id, b);
       this._cats.append(b);
     }
+    for (const row of [this._items, this._cats, this._options]) {
+      // вертикальное колесо мыши листает ряд по горизонтали
+      row.addEventListener('wheel', (e) => {
+        if (row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        row.scrollLeft += e.deltaY;
+        e.preventDefault();
+        e.stopPropagation();
+      }, { passive: false });
+    }
     this.el = h('div', { class: 'toolbar' }, this._options, this._items, this._cats);
     this._offs.push(
       _game.bus.on('tool:set', (id) => this._highlight(id)),

@@ -84,8 +84,13 @@ export class AdvisorSystem implements System {
     if (san.morgueFill > 0.9) sev('bad', 'morgueFull', '⚰️');
 
     if (pop > 150 && st.unemployment > 0.15) sev('warn', 'unemployment', '💼', { n: Math.round(st.unemployment * 100) });
+    const ec = g.config.education;
+    if (pop > 300 && st.jobsByEdu[2] > 20 && st.shortageByEdu[1] > ec.shortageWarn) sev('warn', 'eduShortageHigh', '🎓', { n: Math.round(st.shortageByEdu[1] * 100) });
+    else if (pop > 300 && st.jobsByEdu[1] > 20 && st.shortageByEdu[0] > ec.shortageWarn) sev('warn', 'eduShortage', '🎓', { n: Math.round(st.shortageByEdu[0] * 100) });
+    if (pop > 300 && st.overqualified > 0.2) sev('info', 'overqualified', '🎓', { n: Math.round(st.overqualified * 100) });
     if (pop > 150 && st.jobsTotal > st.workforce * 1.35 + 20) sev('info', 'needWorkers', '👥');
     if (pop > 400 && st.trafficFlow < 0.55) sev('warn', 'traffic', '🚗', { n: Math.round(st.trafficFlow * 100) });
+    if (pop > 400 && st.trafficFlow < 0.7 && !g.get('transit').busesAlive() && !services('taxidepot')) sev('info', 'trafficTransit', '🚌');
     if (pop > 200 && !services('police') && !services('policehq')) sev('info', 'noPolice', '🚓');
     if (pop > 200 && !services('fire') && !services('firehq')) sev('info', 'noFire', '🚒');
     if (pop > 400 && !services('clinic') && !services('hospital')) sev('info', 'noHealth', '🏥');

@@ -2,7 +2,7 @@ import { Color, Matrix4, MeshLambertMaterial, type Scene } from 'three';
 import type { Game } from '../core/Game';
 import type { VehicleKind } from '../sim/TrafficSystem';
 import { InstancePool } from './InstancePool';
-import { busModel, carModel, garbageModel, hearseModel, policeModel, truckModel } from './models';
+import { busModel, carModel, garbageModel, hearseModel, policeModel, taxiModel, truckModel } from './models';
 import type { View } from './View';
 
 /** Рисует все машины из TrafficSystem; экземпляры пересобираются каждый кадр. */
@@ -20,6 +20,7 @@ export class VehicleView implements View {
       police: new InstancePool(policeModel(), mat, 40),
       garbage: new InstancePool(garbageModel(), mat, 60),
       hearse: new InstancePool(hearseModel(), mat, 40),
+      taxi: new InstancePool(taxiModel(), mat, 80),
     };
     for (const p of Object.values(this._pools)) scene.add(p.mesh);
   }
@@ -27,7 +28,7 @@ export class VehicleView implements View {
   update(): void {
     const pools = this._pools;
     for (const p of Object.values(pools)) p.mesh.count = 0;
-    const counters: Record<VehicleKind, number> = { car: 0, truck: 0, bus: 0, police: 0, garbage: 0, hearse: 0 };
+    const counters: Record<VehicleKind, number> = { car: 0, truck: 0, bus: 0, police: 0, garbage: 0, hearse: 0, taxi: 0 };
     for (const v of this._game.get('traffic').vehicles) {
       const pool = pools[v.kind];
       const k = counters[v.kind];

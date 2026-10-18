@@ -232,12 +232,11 @@ export class ZoneTool implements Tool {
   readonly showGrid = true;
   readonly options: ToolOption[];
   private _brush: number;
-  private _density = 0;
   private _painting = false;
   private _last: Pointer | null = null;
 
-  constructor(private _game: Game, private _zoneId: string | null) {
-    this.id = `zone:${_zoneId ?? 'none'}`;
+  constructor(private _game: Game, private _zoneId: string | null, private _density = 0) {
+    this.id = _zoneId ? `zone:${_zoneId}:${_density}` : 'zone:none';
     this._brush = _game.config.zoning.defaultBrush;
     this.options = [
       {
@@ -247,25 +246,6 @@ export class ZoneTool implements Tool {
         get: () => String(this._brush),
         set: (id) => (this._brush = Number(id)),
       },
-      ...(_zoneId
-        ? [
-            {
-              id: 'density',
-              labelKey: 'opt.density',
-              choices: [0, 1, 2].map((n) => ({ id: String(n), labelKey: `density.${_zoneId}.${n}.name` })),
-              get: () => String(this._density),
-              set: (id: string) => {
-                const n = Number(id);
-                if (n > 0 && !this._game.get('progress').isUnlocked(`density:${n}`)) {
-                  this._game.message('err.locked', undefined, 'bad');
-                  this._game.sfx('error');
-                  return;
-                }
-                this._density = n;
-              },
-            },
-          ]
-        : []),
     ];
   }
 
