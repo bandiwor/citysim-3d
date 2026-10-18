@@ -7,6 +7,8 @@ import { Terrain } from '../world/Terrain';
 import { graphics } from '../render/graphics';
 import { pwa } from '../pwa';
 import { h } from './dom';
+import { icon } from './icons';
+import { UI_ICONS } from './icons/map';
 import { keys } from './keybinds';
 import { Clock, Hud } from './Hud';
 import { RouteTool } from '../tools/MoreTools';
@@ -187,8 +189,9 @@ export class UI {
 
   /** Экранные кнопки для телефона: показываются по контексту (дорога, кисть, здание). Камера — жестами. */
   private _buildTouchBar(): void {
-    const b = (key: string, text: string, title: string, fn: () => void): HTMLElement => {
-      const el = h('button', { class: 'btn icon', text, title: t(title), onclick: fn });
+    const T = UI_ICONS.touch;
+    const b = (key: keyof typeof T | 'mode', text: string, title: string, fn: () => void): HTMLElement => {
+      const el = h('button', { class: 'btn icon', title: t(title), onclick: fn }, icon(key === 'mode' ? T.draw : T[key], text));
       this._tb[key] = el;
       return el;
     };
@@ -245,7 +248,7 @@ export class UI {
     show('ok', active && !brush);
     this._tb.ok?.classList.toggle('ready', this.input.hasPending);
     this._tb.mode?.classList.toggle('on', !this.input.touchDraw);
-    if (this._tb.mode) this._tb.mode.textContent = this.input.touchDraw ? '✏️' : '✋';
+    if (this._tb.mode) this._tb.mode.replaceChildren(icon(this.input.touchDraw ? UI_ICONS.touch.draw : UI_ICONS.touch.camera, this.input.touchDraw ? '✏️' : '✋'));
     this._tb.hide?.classList.toggle('on', document.body.classList.contains('ui-min'));
     document.body.classList.toggle('tool-on', active);
   }
@@ -365,7 +368,7 @@ export class UI {
   }
 
   openSettings(): void {
-    this._modal.open(`⚙️ ${t('menu.settings')}`, settingsBody({ game: this._game, audio: this._audio, onLocale: (l) => setLocale(l) }));
+    this._modal.open(t('menu.settings'), settingsBody({ game: this._game, audio: this._audio, onLocale: (l) => setLocale(l) }));
   }
 
   openEducation(): void {
@@ -383,10 +386,10 @@ export class UI {
     const box = h(
       'div',
       { class: 'menu' },
-      h('button', { class: 'btn wide', text: `💾 ${t('menu.save')}`, onclick: () => g.get('save').save() }),
-      h('button', { class: 'btn wide', text: `⚙️ ${t('menu.settings')}`, onclick: () => this._modal.open(t('menu.settings'), settingsBody({ game: g, audio: this._audio, onLocale: (l) => setLocale(l) })) }),
-      h('button', { class: 'btn wide', text: `❓ ${t('menu.help')}`, onclick: () => this._modal.open(t('menu.help'), helpBody()) }),
-      h('button', { class: 'btn wide danger', text: `🏠 ${t('menu.exit')}`, onclick: () => { g.get('save').save(true); this._onExit(); } }),
+      h('button', { class: 'btn wide', onclick: () => g.get('save').save() }, icon(UI_ICONS.save, '💾'), h('span', { text: t('menu.save') })),
+      h('button', { class: 'btn wide', onclick: () => this.openSettings() }, icon(UI_ICONS.settings, '⚙️'), h('span', { text: t('menu.settings') })),
+      h('button', { class: 'btn wide', onclick: () => this._modal.open(t('menu.help'), helpBody()) }, icon(UI_ICONS.help, '❓'), h('span', { text: t('menu.help') })),
+      h('button', { class: 'btn wide danger', onclick: () => { g.get('save').save(true); this._onExit(); } }, icon(UI_ICONS.exit, '🏠'), h('span', { text: t('menu.exit') })),
     );
     this._modal.open(t('menu.title'), box);
   }

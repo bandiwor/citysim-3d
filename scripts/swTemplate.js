@@ -27,19 +27,32 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+  // страница — сначала сеть (свежий index.html с актуальными хэшами файлов), офлайн — из кэша
+  if (req.mode === 'navigate') {
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put('./index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.open(CACHE).then((c) => c.match('./index.html').then((hit) => hit || c.match('./')))),
+    );
+    return;
+  }
+  // файлы сборки неизменны (имя = хэш): из кэша этой версии, иначе из сети
   e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(
-      (hit) =>
-        hit ||
-        fetch(req)
-          .then((res) => {
-            if (res.ok) {
-              const copy = res.clone();
-              caches.open(CACHE).then((c) => c.put(req, copy));
-            }
+    caches.open(CACHE).then((c) =>
+      c.match(req, { ignoreSearch: true }).then(
+        (hit) =>
+          hit ||
+          fetch(req).then((res) => {
+            if (res.ok) c.put(req, res.clone());
             return res;
-          })
-          .catch(() => (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())),
+          }),
+      ),
     ),
   );
 });

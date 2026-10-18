@@ -2,6 +2,7 @@ import type { Game } from '../core/Game';
 import type { Tool } from '../core/Tool';
 import { fmtNumber, t } from '../i18n';
 import { h } from './dom';
+import { toolIcon } from './icons';
 
 /** Нижняя панель: категории → инструменты (строится по реестру game.toolbar) + опции активного инструмента. */
 export class Toolbar {
@@ -17,7 +18,7 @@ export class Toolbar {
 
   constructor(private _game: Game, private _getTool: () => Tool | null) {
     for (const c of _game.categories) {
-      const b = h('button', { class: 'btn cat', title: t(`category.${c.id}.name`), onclick: () => this._toggle(c.id) }, h('span', { class: 'ic', text: c.icon }), h('span', { class: 'lb', text: t(`category.${c.id}.name`) }));
+      const b = h('button', { class: 'btn cat', title: t(`category.${c.id}.name`), onclick: () => this._toggle(c.id) }, h('span', { class: 'ic' }, toolIcon(c.id, c.icon)), h('span', { class: 'lb', text: t(`category.${c.id}.name`) }));
       this._catBtns.set(c.id, b);
       this._cats.append(b);
     }
@@ -123,7 +124,7 @@ export class Toolbar {
           if (matchMedia('(pointer: coarse)').matches) this.setCollapsed(true);
         },
         },
-        h('span', { class: 'ic', text: it.icon }),
+        h('span', { class: 'ic' }, toolIcon(it.id, it.icon)),
         h('span', { class: 'nm', text: t(it.nameKey) }),
         it.cost ? h('span', { class: 'cost', text: `${t('unit.money')}${fmtNumber(it.cost)}` }) : null,
         h('span', { class: 'lock', text: '' }),
@@ -161,7 +162,7 @@ export class Toolbar {
     }
     const r = anchor.getBoundingClientRect();
     const host = this.el.getBoundingClientRect();
-    const parts: HTMLElement[] = [h('div', { class: 'tip-h' }, h('span', { class: 'tip-ic', text: it.icon }), h('b', { text: t(it.nameKey) }))];
+    const parts: HTMLElement[] = [h('div', { class: 'tip-h' }, h('span', { class: 'tip-ic' }, toolIcon(it.id, it.icon)), h('b', { text: t(it.nameKey) }))];
     if (it.descKey) parts.push(h('div', { class: 'tip-d', text: t(it.descKey) }));
     for (const [k, v] of rows) parts.push(h('div', { class: 'tip-r' }, h('span', { text: k }), h('span', { text: v })));
     if (it.hotkey && it.hotkey !== 'Escape') parts.push(h('div', { class: 'tip-d dim', text: `${t('tip.hotkey')}: ${it.hotkey.replace(/^Key/, '')}` }));

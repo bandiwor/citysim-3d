@@ -1,4 +1,6 @@
+import './ui/fonts.css';
 import './style.css';
+import './ui/theme.css';
 import { AudioEngine } from './audio/AudioEngine';
 import { collectAmbient } from './audio/collect';
 import { mergeConfig } from './config/gameConfig';

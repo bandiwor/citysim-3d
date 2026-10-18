@@ -90,7 +90,7 @@ function watch(reg: ServiceWorkerRegistration): void {
 /** Регистрирует service worker (только в production-сборке) и подписывается на события установки. */
 export function registerPwa(): void {
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
+    // без preventDefault: браузер не ругается «Banner not shown», а сохранённое событие всё равно открывает установку по нашей кнопке
     deferred = e as InstallPromptEvent;
     notify();
   });

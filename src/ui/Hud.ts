@@ -1,6 +1,8 @@
 import type { Game } from '../core/Game';
 import { fmtMoney, fmtNumber, fmtPercent, fmtSigned, t } from '../i18n';
 import { h } from './dom';
+import { icon } from './icons';
+import { UI_ICONS } from './icons/map';
 import { clockLabel, dateLabel, phaseIcon } from './format';
 
 /** Верхняя панель: дата, деньги, население, счастье, спрос RCI, скорость, меню. */
@@ -35,40 +37,39 @@ export class Hud {
       bars.append(h('div', { class: 'rci-bar', title: t(`zone.${z.id}.name`) }, h('div', { class: 'rci-mid' }), fill, h('span', { class: 'rci-l', text: t(`zone.${z.id}.short`) })));
     }
     const speeds = h('div', { class: 'speeds' });
-    const icons = ['⏸', '▶', '⏩', '⏭'];
     _game.config.time.speeds.forEach((v, i) => {
-      const b = h('button', { class: 'btn icon', text: icons[i] ?? `×${v}`, title: t(v === 0 ? 'hud.pause' : 'hud.speed', { n: v }), onclick: () => _game.setSpeed(v) });
+      const b = h('button', { class: 'btn icon', title: t(v === 0 ? 'hud.pause' : 'hud.speed', { n: v }), onclick: () => _game.setSpeed(v) }, icon(UI_ICONS.speeds[i], `×${v}`));
       this._speedBtns.push(b);
       speeds.append(b);
     });
-    this._evBtn = h('button', { class: 'btn icon pulse', text: '📨', title: t('hud.event'), style: 'display:none', onclick: actions.event });
-    const advBtn = h('button', { class: 'btn icon relative', title: t('hud.advisor'), onclick: () => actions.advisor(advBtn) }, h('span', { text: '🔔' }), this._badge);
-    const mapsBtn = h('button', { class: 'btn maps-btn', title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) }, h('span', { text: '🗺️' }), h('span', { class: 'lbl', text: ` ${t('hud.maps')}` }));
+    this._evBtn = h('button', { class: 'btn icon pulse', title: t('hud.event'), style: 'display:none', onclick: actions.event }, icon(UI_ICONS.event, '📨'));
+    const advBtn = h('button', { class: 'btn icon relative', title: t('hud.advisor'), onclick: () => actions.advisor(advBtn) }, icon(UI_ICONS.advisor, '🔔'), this._badge);
+    const mapsBtn = h('button', { class: 'btn maps-btn', title: t('hud.mapsTitle'), onclick: () => actions.maps(mapsBtn) }, icon(UI_ICONS.maps, '🗺️'), h('span', { class: 'lbl', text: ` ${t('hud.maps')}` }));
     // кнопки окон: ряд значков на ПК и тот же набор вертикальным списком в боковом меню на телефоне
-    const defs: { ic: string; label: string; title: string; fn: () => void }[] = [
-      { ic: '🎯', label: t('hud.goals'), title: `${t('hud.goals')} (J)`, fn: actions.goals },
-      { ic: '📜', label: t('hud.policies'), title: `${t('hud.policies')} (K)`, fn: actions.policies },
-      { ic: '💰', label: t('hud.budget'), title: `${t('hud.budget')} (B)`, fn: actions.budget },
-      { ic: '📊', label: t('hud.stats'), title: `${t('hud.stats')} (G)`, fn: actions.stats },
-      { ic: '🔍', label: t('hud.diagnostics'), title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, fn: actions.diagnostics },
-      { ic: '🎓', label: t('hud.education'), title: `${t('hud.education')} (E)`, fn: actions.education },
-      { ic: '🚌', label: t('hud.routes'), title: `${t('hud.routes')} (T)`, fn: actions.routes },
-      { ic: '🗑️', label: t('hud.city'), title: `${t('hud.city')} (H)`, fn: actions.city },
-      { ic: '🚶', label: t('hud.walk'), title: `${t('hud.walk')} (P)`, fn: actions.walk },
-      { ic: '💾', label: t('menu.save'), title: t('menu.save'), fn: actions.save },
-      { ic: '❓', label: t('menu.help'), title: t('menu.help'), fn: actions.help },
+    const defs: { ic: string; svg: string; label: string; title: string; fn: () => void }[] = [
+      { ic: '🎯', svg: UI_ICONS.goals, label: t('hud.goals'), title: `${t('hud.goals')} (J)`, fn: actions.goals },
+      { ic: '📜', svg: UI_ICONS.policies, label: t('hud.policies'), title: `${t('hud.policies')} (K)`, fn: actions.policies },
+      { ic: '💰', svg: UI_ICONS.budget, label: t('hud.budget'), title: `${t('hud.budget')} (B)`, fn: actions.budget },
+      { ic: '📊', svg: UI_ICONS.stats, label: t('hud.stats'), title: `${t('hud.stats')} (G)`, fn: actions.stats },
+      { ic: '🔍', svg: UI_ICONS.diagnostics, label: t('hud.diagnostics'), title: `${t('hud.diagnostics')} (N) — ${t('hud.diagnosticsHint')}`, fn: actions.diagnostics },
+      { ic: '🎓', svg: UI_ICONS.education, label: t('hud.education'), title: `${t('hud.education')} (E)`, fn: actions.education },
+      { ic: '🚌', svg: UI_ICONS.routes, label: t('hud.routes'), title: `${t('hud.routes')} (T)`, fn: actions.routes },
+      { ic: '🗑️', svg: UI_ICONS.city, label: t('hud.city'), title: `${t('hud.city')} (H)`, fn: actions.city },
+      { ic: '🚶', svg: UI_ICONS.walk, label: t('hud.walk'), title: `${t('hud.walk')} (P)`, fn: actions.walk },
+      { ic: '💾', svg: UI_ICONS.save, label: t('menu.save'), title: t('menu.save'), fn: actions.save },
+      { ic: '❓', svg: UI_ICONS.help, label: t('menu.help'), title: t('menu.help'), fn: actions.help },
     ];
-    const rowBtns = defs.map((d) => h('button', { class: 'btn icon', text: d.ic, title: d.title, onclick: d.fn }));
+    const rowBtns = defs.map((d) => h('button', { class: 'btn icon', title: d.title, onclick: d.fn }, icon(d.svg, d.ic)));
     let moreBtn!: HTMLElement;
     const side = h('div', { class: 'side-menu' });
     this._side = side;
     const closeSide = (): void => side.classList.remove('open');
-    const sideBtns = defs.map((d) => h('button', { class: 'btn side-item', onclick: () => { closeSide(); d.fn(); } }, h('span', { class: 'si-ic', text: d.ic }), h('span', { text: d.label })));
-    const evSide = h('button', { class: 'btn side-item pulse', style: 'display:none', onclick: () => { closeSide(); actions.event(); } }, h('span', { class: 'si-ic', text: '📨' }), h('span', { text: t('hud.event') }));
+    const sideBtns = defs.map((d) => h('button', { class: 'btn side-item', onclick: () => { closeSide(); d.fn(); } }, h('span', { class: 'si-ic' }, icon(d.svg, d.ic)), h('span', { text: d.label })));
+    const evSide = h('button', { class: 'btn side-item pulse', style: 'display:none', onclick: () => { closeSide(); actions.event(); } }, h('span', { class: 'si-ic' }, icon(UI_ICONS.event, '📨')), h('span', { text: t('hud.event') }));
     this._evSide = evSide;
-    const advSide = h('button', { class: 'btn side-item', onclick: () => { closeSide(); actions.advisor(moreBtn); } }, h('span', { class: 'si-ic', text: '🔔' }), h('span', { text: t('hud.advisor') }));
+    const advSide = h('button', { class: 'btn side-item', onclick: () => { closeSide(); actions.advisor(moreBtn); } }, h('span', { class: 'si-ic' }, icon(UI_ICONS.advisor, '🔔')), h('span', { text: t('hud.advisor') }));
     side.append(evSide, advSide, ...sideBtns);
-    moreBtn = h('button', { class: 'btn icon more-btn', text: '⋯', title: t('hud.more'), onclick: (e: Event) => { e.stopPropagation(); side.classList.toggle('open'); } });
+    moreBtn = h('button', { class: 'btn icon more-btn', title: t('hud.more'), onclick: (e: Event) => { e.stopPropagation(); side.classList.toggle('open'); } }, icon(UI_ICONS.more, '⋯'));
     // нажатие мимо бокового меню закрывает его
     document.addEventListener('pointerdown', (e) => side.classList.contains('open') && !side.contains(e.target as Node) && e.target !== moreBtn && closeSide());
     // одна кнопка времени на телефоне: ⏸ → ▶ → ⏩ → ⏭
@@ -80,11 +81,11 @@ export class Hud {
     this.el = h(
       'div',
       { class: 'hud' },
-      h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', text: '☰', title: t('hud.menu'), onclick: actions.menu }), this._date),
+      h('div', { class: 'hud-group' }, h('button', { class: 'btn icon', title: t('hud.menu'), onclick: actions.menu }, icon(UI_ICONS.menu, '☰')), this._date),
       h('div', { class: 'hud-group clickable hud-money-g', title: t('hud.budget'), onclick: actions.budget }, this._money, this._delta),
-      h('div', { class: 'hud-group clickable hud-stats', title: t('hud.stats'), onclick: actions.stats }, h('span', { text: '👥' }), this._pop, h('span', { text: '💼' }), this._jobs, h('span', { text: '😊' }), this._hap, h('span', { text: '🚗' }), this._traf),
-      h('div', { class: 'hud-group clickable hud-level', title: t('hud.goals'), onclick: actions.goals }, this._level, h('div', { class: 'lv-bar' }, this._lvFill)),
-      h('div', { class: 'hud-group hud-util', title: t('hud.utilities') }, h('span', { text: '⚡' }), this._power, h('span', { text: '💧' }), this._water),
+      h('div', { class: 'hud-group clickable hud-stats', title: t('hud.stats'), onclick: actions.stats }, h('span', { class: 'hud-ic' }, icon(UI_ICONS.pop, '👥')), this._pop, h('span', { class: 'hud-ic' }, icon(UI_ICONS.jobs, '💼')), this._jobs, h('span', { class: 'hud-ic' }, icon(UI_ICONS.happy, '😊')), this._hap, h('span', { class: 'hud-ic' }, icon(UI_ICONS.traffic, '🚗')), this._traf),
+      h('div', { class: 'hud-group clickable hud-level', title: t('hud.goals'), onclick: actions.goals }, h('span', { class: 'hud-ic' }, icon(UI_ICONS.level, '🏙️')), this._level, h('div', { class: 'lv-bar' }, this._lvFill)),
+      h('div', { class: 'hud-group hud-util', title: t('hud.utilities') }, h('span', { class: 'hud-ic' }, icon(UI_ICONS.power, '⚡')), this._power, h('span', { class: 'hud-ic' }, icon(UI_ICONS.water, '💧')), this._water),
       bars,
       h('div', { class: 'hud-spacer' }),
       speedOne,
@@ -110,7 +111,8 @@ export class Hud {
   private _refreshSpeed(): void {
     const sp = this._game.config.time.speeds;
     sp.forEach((v, i) => this._speedBtns[i].classList.toggle('active', v === this._game.speed));
-    this._speedOne.textContent = ['⏸', '▶', '⏩', '⏭'][sp.indexOf(this._game.speed)] ?? `×${this._game.speed}`;
+    const idx = sp.indexOf(this._game.speed);
+    this._speedOne.replaceChildren(icon(UI_ICONS.speeds[idx], `×${this._game.speed}`));
   }
 
   refresh(): void {
@@ -120,7 +122,7 @@ export class Hud {
     const u = g.get('utility');
     this._date.textContent = dateLabel(g.get('time'));
     const pr = g.get('progress');
-    this._level.textContent = `🏙️ ${t(`level.${pr.levels[pr.level].id}`)}`;
+    this._level.textContent = t(`level.${pr.levels[pr.level].id}`);
     this._lvFill.style.width = `${Math.round(pr.progressToNext() * 100)}%`;
     const issues = g.get('advisor').issues.filter((i) => i.sev !== 'info').length;
     this._badge.textContent = String(issues);
