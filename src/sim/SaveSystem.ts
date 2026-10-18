@@ -1,3 +1,4 @@
+import { anyCheat } from '../core/cheats';
 import type { Game } from '../core/Game';
 import type { Modifier } from './ModifierSystem';
 import type { Objective } from './ObjectiveSystem';
@@ -98,6 +99,8 @@ export interface SaveData {
   mods?: Modifier[];
   /** доли образованных: [с образованием, с высшим] */
   /** стиль ландшафта (нет — сохранение со старым генератором) */
+  /** включённые читы */
+  ch?: Partial<import('../core/cheats').Cheats>;
   ts?: { mountains: number; hills: number; rivers: number; lakes: number };
   edu?: [number, number];
   /** посаженные растения [вид, x, z, масштаб, поворот] и стёртые процедурные деревья */
@@ -201,6 +204,7 @@ export class SaveSystem implements System {
       objectives: { active: g.get('objectives').active, completed: g.get('objectives').completed },
       mods: g.get('mods').active.filter((m) => !m.id.startsWith('policy:')),
       ...(g.terrainStyle ? { ts: g.terrainStyle } : {}),
+      ...(anyCheat(g.cheats) ? { ch: g.cheats } : {}),
       edu: [g.get('stats').eduEducated, g.get('stats').eduHigh],
       ...(w.props.size ? { props: [...w.props.values()].map((p) => [p.kind, r1(p.x), r1(p.z), Math.round(p.s * 100) / 100, Math.round(p.rot * 100) / 100] as [string, number, number, number, number]) } : {}),
       ...(w.erasedTrees.size ? { et: [...w.erasedTrees] } : {}),

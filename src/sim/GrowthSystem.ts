@@ -80,6 +80,7 @@ export class GrowthSystem implements System {
 
   /** Счастье здания 0..1 по службам, загрязнению, налогам, безработице и т.д. */
   happinessOf(b: Building): number {
+    if (this._game.cheats.happyCity) return 1;
     let v = 0;
     for (const [, x] of this.happinessFactors(b)) v += x;
     return clamp(v, 0, 1);

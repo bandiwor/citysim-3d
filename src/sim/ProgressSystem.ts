@@ -53,11 +53,11 @@ export class ProgressSystem implements System {
   }
 
   isUnlocked(key: string): boolean {
-    return !this.enabled || this.peakPop >= this.unlockPop(key);
+    return !this.enabled || this._game.cheats.unlockAll || this.peakPop >= this.unlockPop(key);
   }
 
   populationUnlocked(pop: number): boolean {
-    return !this.enabled || this.peakPop >= pop;
+    return !this.enabled || this._game.cheats.unlockAll || this.peakPop >= pop;
   }
 
   /** Доля пути до следующего уровня 0..1 (1 — максимум). */

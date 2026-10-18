@@ -118,3 +118,37 @@ describe('диагностика', () => {
     expect(g.get('economy').creditLimit).toBeGreaterThan(base);
   });
 });
+
+describe('читы', () => {
+  it('бесконечные деньги не тратятся, а «открыть всё» снимает блокировку', () => {
+    const g = new (createGame().constructor as typeof import('../src/core/Game').Game)({ seed: 1, terrain: undefined, size: 40, cheats: { infiniteMoney: true, unlockAll: true, noUpkeep: true, instantBuild: true, startMoney: 777 }, config: { progress: { enabled: true } } });
+    expect(g.config.construction.enabled).toBe(false);
+    expect(g.cheats.infiniteMoney).toBe(true);
+  });
+
+  it('деньги держатся на максимуме при включённом чите', async () => {
+    const g = createGame();
+    (g.cheats as { infiniteMoney: boolean }).infiniteMoney = true;
+    g.get('economy').money = 5;
+    await run(g, 1);
+    expect(g.get('economy').money).toBeGreaterThan(1e8);
+    expect(g.get('economy').spend(1e6)).toBe(true);
+    expect(g.get('economy').money).toBeGreaterThan(1e8);
+  });
+
+  it('без содержания расходы нулевые', async () => {
+    const g = createGame();
+    road(g, 40, 100, 200, 100);
+    expect(g.get('economy').computeBudget().expense.roads).toBeGreaterThan(0);
+    (g.cheats as { noUpkeep: boolean }).noUpkeep = true;
+    expect(g.get('economy').computeBudget().expense.roads).toBe(0);
+    await settle(g);
+  });
+
+  it('читы сохраняются в сохранении', () => {
+    const g = createGame();
+    expect(g.get('save').serialize().ch).toBeUndefined();
+    (g.cheats as { happyCity: boolean }).happyCity = true;
+    expect(g.get('save').serialize().ch?.happyCity).toBe(true);
+  });
+});

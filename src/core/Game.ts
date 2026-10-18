@@ -6,6 +6,7 @@ import type { ZoneType } from '../data/zones';
 import { Builder } from '../sim/Builder';
 import { InlineCompute } from '../workers/InlineCompute';
 import type { ComputeBackend } from '../workers/protocol';
+import { CHEATS_OFF, type Cheats } from './cheats';
 import { generateTerrain, terrainParams, type TerrainData, type TerrainStyle } from '../world/Terrain';
 import { World } from '../world/World';
 import { EventBus } from './EventBus';
@@ -42,6 +43,8 @@ export interface GameOptions {
   /** готовый рельеф (например, из воркера); иначе генерируется синхронно */
   terrain?: TerrainData;
   size?: number;
+  /** читы (см. core/cheats.ts) */
+  cheats?: Partial<Cheats>;
   /** стиль ландшафта (сохраняется вместе с игрой) */
   terrainStyle?: TerrainStyle;
   config?: DeepPartial<GameConfig>;
@@ -68,10 +71,19 @@ export class Game {
   private _started = false;
 
   readonly terrainStyle: TerrainStyle | undefined;
+  readonly cheats: Cheats;
 
   constructor(readonly options: GameOptions) {
     this.terrainStyle = options.terrainStyle;
-    this.config = mergeConfig({ ...options.config, ...(options.size ? { world: { ...options.config?.world, size: options.size } } : {}) });
+    this.cheats = { ...CHEATS_OFF, ...options.cheats };
+    const ch = this.cheats;
+    const overrides: DeepPartial<GameConfig> = {
+      ...options.config,
+      ...(ch.instantBuild ? { construction: { ...options.config?.construction, enabled: false } } : {}),
+      ...(ch.noDisasters ? { disasters: { ...options.config?.disasters, enabled: false } } : {}),
+      ...(ch.startMoney > 0 ? { economy: { ...options.config?.economy, startMoney: ch.startMoney } } : {}),
+    };
+    this.config = mergeConfig({ ...overrides, ...(options.size ? { world: { ...options.config?.world, size: options.size } } : {}) });
     this.compute = options.compute ?? new InlineCompute();
     const terrain = options.terrain ?? generateTerrain(terrainParams(this.config, options.seed, undefined, options.terrainStyle));
     this.world = new World(terrain, options.seed, this.config);

@@ -2,6 +2,7 @@ import type { AudioChannel, AudioEngine } from '../audio/AudioEngine';
 import type { Game } from '../core/Game';
 import { getLocale, LOCALES, t, type Locale } from '../i18n';
 import { GRAPHICS_PRESETS, graphics, type GraphicsSettings } from '../render/graphics';
+import { BUILD_LABEL, pwa } from '../pwa';
 import { h } from './dom';
 import { BINDS, keyLabel, keys } from './keybinds';
 import { slider } from './Panels';
@@ -48,6 +49,32 @@ export function settingsBody(d: SettingsDeps): HTMLElement {
   const g = (): GraphicsSettings => graphics.get();
   const vol = (ch: AudioChannel): HTMLElement => slider(t(`settings.vol.${ch}`), 0, 100, Math.round(d.audio.volume(ch) * 100), '%', (v) => d.audio.setVolume(ch, v / 100));
 
+  /** Установка приложения, офлайн-режим и обновления. */
+  const appBlock = (): HTMLElement => {
+    const box = h('div', { class: 'app-box' });
+    const status = h('span', { class: 'dim small' });
+    const draw = (): void => {
+      box.replaceChildren(h('h4', { text: t('settings.app') }));
+      const rows: HTMLElement[] = [];
+      rows.push(h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('pwa.offline') }), h('span', { class: 'dim', text: pwa.offlineReady ? t('pwa.offline.ready') : pwa.supported ? t('pwa.offline.pending') : t('pwa.offline.na') })), h('span', { text: pwa.offlineReady ? '✅' : '⏳' })));
+      if (pwa.standalone) rows.push(h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('pwa.installed') })), h('span', { text: '✅' })));
+      else if (pwa.installable) rows.push(h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('pwa.install') }), h('span', { class: 'dim', text: t('pwa.install.hint') })), h('button', { class: 'btn sm primary', text: `⬇ ${t('pwa.installBtn')}`, onclick: () => void pwa.install() })));
+      else rows.push(h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('pwa.install') }), h('span', { class: 'dim', text: t('pwa.install.manual') }))));
+      const upd = pwa.updateReady
+        ? h('button', { class: 'btn sm primary', text: `🔄 ${t('pwa.applyUpdate')}`, onclick: () => pwa.applyUpdate() })
+        : h('button', { class: 'btn sm', text: t('pwa.check'), onclick: async () => {
+            status.textContent = t('pwa.checking');
+            const r = await pwa.checkUpdate();
+            status.textContent = t(`pwa.result.${r}`);
+            if (r === 'ready') draw();
+          } });
+      rows.push(h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('pwa.version') }), h('span', { class: 'dim', text: `${t('pwa.build')}: ${BUILD_LABEL}` }), status), upd));
+      box.append(...rows);
+    };
+    draw();
+    return box;
+  };
+
   const general = (): HTMLElement => {
     const lang = h('select', { class: 'select', onchange: (e) => d.onLocale?.((e.target as HTMLSelectElement).value as Locale) });
     for (const l of LOCALES) lang.append(h('option', { value: l.id, text: l.label }));
@@ -58,6 +85,7 @@ export function settingsBody(d: SettingsDeps): HTMLElement {
       h('div', { class: 'srow' }, h('div', { class: 'srow-t' }, h('b', { text: t('settings.language') })), lang),
       slider(t('settings.uiScale'), 80, 140, Math.round(g().uiScale * 100), '%', (v) => graphics.set({ uiScale: v / 100 })),
       toggle(t('settings.fps'), t('settings.fps.hint'), () => g().fps, (v) => graphics.set({ fps: v })),
+      appBlock(),
       h('h4', { text: t('settings.gameplay') }),
       toggle(t('settings.fires'), t('settings.fires.hint'), () => d.game.get('disaster').enabled, (v) => (d.game.get('disaster').enabled = v)),
       toggle(t('settings.dayNight'), t('settings.dayNight.hint'), () => g().dayNight, (v) => graphics.set({ dayNight: v })),

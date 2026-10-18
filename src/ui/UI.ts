@@ -5,6 +5,7 @@ import { onLocaleChange, setLocale, t } from '../i18n';
 import type { Renderer } from '../render/Renderer';
 import { Terrain } from '../world/Terrain';
 import { graphics } from '../render/graphics';
+import { pwa } from '../pwa';
 import { h } from './dom';
 import { keys } from './keybinds';
 import { Clock, Hud } from './Hud';
@@ -23,6 +24,9 @@ export class UI {
   readonly input: Input;
   private _modal = new Modal();
   private _toasts = h('div', { class: 'toasts' });
+  private _selected = false;
+  private _update = h('div', { class: 'update-banner', style: 'display:none' });
+  private _toolbar: Toolbar | null = null;
   private _fps = h('div', { class: 'fps', style: 'display:none' });
   private _hint = h('div', { class: 'cursor-hint', style: 'display:none' });
   private _info = h('div', { class: 'cell-info' });
@@ -48,6 +52,24 @@ export class UI {
       this._hint.style.transform = `translate(${x + 18}px, ${y + 14}px)`;
     };
     this.input.onHover = (p) => this._hover(p);
+    this.input.isBlocked = () => this._modal.isOpen;
+    // Esc при «Выборе»: раздел панели → выбор здания → меню
+    _game.bus.on('select', (b) => (this._selected = !!b));
+    _game.bus.on('select:stop', (id) => (this._selected = !!id));
+    this.input.onIdleEscape = () => {
+      if (this._toolbar?.isOpen) {
+        this._toolbar.close();
+        return true;
+      }
+      if (this._selected) {
+        _game.bus.emit('select', null);
+        _game.bus.emit('select:stop', null);
+        return true;
+      }
+      // меню открываем после обработчика Esc окна, иначе оно тут же закроется
+      setTimeout(() => this._menu(), 0);
+      return true;
+    };
     this._modal.onClose = () => (this._eventOpen = false);
     _game.bus.on('message', (m) => this._toast(t(m.key, m.params), m.kind));
     _game.bus.on('event:show', () => {
@@ -74,6 +96,13 @@ export class UI {
     _root.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.btn')) _audio.sfx('tick');
     });
+    // новая версия приложения скачана — предлагаем обновиться
+    const syncUpdate = (): void => {
+      this._update.style.display = pwa.updateReady ? 'flex' : 'none';
+    };
+    this._update.append(h('span', { text: `🔄 ${t('pwa.updateAvailable')}` }), h('button', { class: 'btn sm primary', text: t('pwa.applyUpdate'), onclick: () => pwa.applyUpdate() }), h('button', { class: 'btn sm', text: '✕', onclick: () => (this._update.style.display = 'none') }));
+    pwa.onChange(syncUpdate);
+    syncUpdate();
     // масштаб интерфейса и счётчик FPS из настроек графики
     const applyUi = (): void => {
       this._root.style.setProperty('--ui-scale', String(graphics.get().uiScale));
@@ -124,6 +153,7 @@ export class UI {
     });
     const clock = new Clock(g);
     const toolbar = new Toolbar(g, () => this.input.tool);
+    this._toolbar = toolbar;
     const inspector = new Inspector(g);
     this._parts = [hud, toolbar, inspector, clock];
     this._fpBar.replaceChildren(
@@ -131,7 +161,7 @@ export class UI {
       h('div', { class: 'fp-help', text: t('fp.help') }),
       h('button', { class: 'btn', text: `⏎ ${t('fp.exit')}`, onclick: () => this.fp.exit() }),
     );
-    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._fps, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
+    this._root.replaceChildren(hud.el, toolbar.el, inspector.el, clock.el, this._fpBar, this._toasts, this._update, this._fps, this._hint, this._info, this._mapsMenu, this._advMenu, this._tracker, this._touchBar, this._modal.el);
     this._buildTouchBar();
     this._advMenu.style.display = 'none';
     this._drawTracker();

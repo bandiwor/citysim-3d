@@ -19,6 +19,8 @@ export interface Budget {
 }
 
 /** Деньги, налоги, финансирование служб, ежемесячный баланс и кредит. */
+const INFINITE = 999_999_999;
+
 export class EconomySystem implements System {
   readonly id = 'economy';
   readonly order = 60;
@@ -52,9 +54,17 @@ export class EconomySystem implements System {
       this._game.sfx('error');
       return false;
     }
-    this.money -= cost;
+    if (!this._game.cheats.infiniteMoney) this.money -= cost;
     this._game.bus.emit('economy:changed');
     return true;
+  }
+
+  /** Чит «бесконечные деньги»: баланс держится на максимуме. */
+  update(): void {
+    if (this._game.cheats.infiniteMoney && this.money < INFINITE / 2) {
+      this.money = INFINITE;
+      this._game.bus.emit('economy:changed');
+    }
   }
 
   earnTransit(v: number): void {
@@ -131,6 +141,9 @@ export class EconomySystem implements System {
     income.ind *= civic;
     const u = g.get('utility');
     income.export = Math.max(0, u.powerSupply - u.powerDemand * 1.1) * c.powerExport + Math.max(0, u.waterSupply - u.waterDemand * 1.1) * c.waterExport;
+    if (g.cheats.noUpkeep) {
+      expense.roads = expense.services = expense.transit = expense.policies = 0;
+    }
     const incomeTotal = income.res + income.com + income.ind + income.transit + income.export;
     const expenseTotal = expense.roads + expense.services + expense.transit + expense.interest + expense.policies;
     return { income, expense, incomeTotal, expenseTotal, net: incomeTotal - expenseTotal };

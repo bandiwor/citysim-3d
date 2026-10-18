@@ -22,6 +22,42 @@ export class Toolbar {
       this._cats.append(b);
     }
     for (const row of [this._items, this._cats, this._options]) {
+      // перетаскивание ряда мышью/пером (палец листает сам: touch-action: pan-x)
+      let startX = 0;
+      let startLeft = 0;
+      let dragging = false;
+      let moved = false;
+      row.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' || e.button !== 0) return;
+        startX = e.clientX;
+        startLeft = row.scrollLeft;
+        dragging = true;
+        moved = false;
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        if (!moved && Math.abs(dx) > 5) {
+          moved = true;
+          row.classList.add('dragging');
+        }
+        if (moved) row.scrollLeft = startLeft - dx;
+      });
+      const end = (): void => {
+        if (!dragging) return;
+        dragging = false;
+        row.classList.remove('dragging');
+        // клик, которым закончилось перетаскивание, не должен нажимать кнопку
+        if (moved) setTimeout(() => (moved = false), 0);
+      };
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+      row.addEventListener('click', (e) => {
+        if (moved) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
       // вертикальное колесо мыши листает ряд по горизонтали
       row.addEventListener('wheel', (e) => {
         if (row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
@@ -40,6 +76,16 @@ export class Toolbar {
     this._affordable();
     this._toggle('roads');
     this._renderOptions();
+  }
+
+  /** Открыт ли раздел с инструментами. */
+  get isOpen(): boolean {
+    return this._open !== '';
+  }
+
+  /** Закрывает раздел (и сбрасывает его инструмент). */
+  close(): void {
+    if (this._open) this._toggle(this._open);
   }
 
   dispose(): void {

@@ -106,6 +106,7 @@ export class UtilitySystem implements System {
         b.watered = true;
       } else b.watered = false;
     }
+    if (g.cheats.freeUtilities) for (const b of list) b.powered = b.watered = true;
     this._powerLeft = pLeft;
     this._waterLeft = wLeft;
     this.version++;

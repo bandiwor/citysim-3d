@@ -1257,3 +1257,27 @@ body {
   .btn.item .nm { font-size: 9px; }
   .btn.cat .lb { display: none; }
 }
+.cheats { text-align: left; background: #ffffff0a; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.cheats summary { cursor: pointer; font-weight: 600; }
+.cheats[open] > summary { margin-bottom: 4px; }
+
+/* Нижнее меню: листание мышью (зажать и вести) и пальцем */
+.tb-items, .tb-cats, .tb-options { cursor: grab; }
+.tb-items.dragging, .tb-cats.dragging, .tb-options.dragging { cursor: grabbing; user-select: none; }
+.tb-items.dragging .btn, .tb-cats.dragging .btn { pointer-events: none; }
+.tb-items, .tb-cats { background: #12161ee8; touch-action: pan-x; }
+/* закрытые позиции: вместо цены — замок с порогом населения, текст целиком */
+.btn.item.locked .cost { display: none; }
+.btn.item.locked .lock { display: block; font-size: 10px; line-height: 1.1; text-align: center; white-space: normal; color: var(--dim); }
+.btn.item.locked .nm { opacity: 0.7; }
+.btn.item.locked .ic { font-size: 16px; }
+.update-banner { position: fixed; left: 50%; transform: translateX(-50%); top: 112px; z-index: 60; align-items: center; gap: 10px; background: #1b2b4d; border: 1px solid var(--accent); border-radius: 12px; padding: 8px 12px; box-shadow: 0 8px 28px #000a; }
+.btn.install { align-self: center; }
+.app-box { display: flex; flex-direction: column; gap: 10px; }
+.app-box h4 { margin: 8px 0 0; }
+@media (min-width: 801px) {
+  .tb-items, .tb-cats, .tb-options { max-width: min(calc(100vw - 360px), 1300px); }
+}
+.cheats .srow { margin-top: 2px; }
+.cheats .srow-t { gap: 1px; }
+.cheats > .dim { margin-bottom: 4px; }

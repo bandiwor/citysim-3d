@@ -75,7 +75,7 @@ export class DemandSystem implements System {
       this.raw[z.id] = cur + (target - cur) * c.smoothing;
       // видимый спрос: пока много пустующего и строящегося, новым зданиям места не нужно
       const eff = clamp(this.raw[z.id] - c.vacancyK * this.vacancy(z.id), -1, 1);
-      this.values[z.id] = eff;
+      this.values[z.id] = this._game.cheats.maxDemand ? 1 : eff;
     }
   }
 }

@@ -46,6 +46,11 @@ export class Input implements ToolContext {
     game.bus.on('tool:request', (id) => this.setTool(id));
   }
 
+  /** Esc при инструменте «Выбор»: закрыть раздел панели / снять выбор / открыть меню; true — обработано. */
+  onIdleEscape?: () => boolean;
+  /** поверх игры открыто окно */
+  isBlocked?: () => boolean;
+
   get toolId(): string {
     return this._toolId;
   }
@@ -265,9 +270,10 @@ export class Input implements ToolContext {
   }
 
   /** ПКМ / Esc: отменить текущую операцию инструмента, иначе вернуться к «Выбору». */
-  private _escape(): void {
+  private _escape(fromKey = false): void {
     if (this.tool?.escape?.(this)) return;
     if (this._toolId !== 'select') this.setTool('select');
+    else if (fromKey && this.onIdleEscape?.()) return;
     else {
       this.game.bus.emit('select', null);
       this.clearPreview();
@@ -283,7 +289,11 @@ export class Input implements ToolContext {
       this.game.bus.emit('tool:set', this._toolId);
       return;
     }
-    if (e.code === 'Escape') return this._escape();
+    if (e.code === 'Escape') {
+      // окно открыто: Esc закрывает его (UI), инструмент не трогаем
+      if (this.isBlocked?.()) return;
+      return this._escape(true);
+    }
     if (keys.is(e, 'pause')) {
       e.preventDefault();
       g.setSpeed(g.speed === 0 ? 1 : 0);

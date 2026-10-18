@@ -1,5 +1,8 @@
 import { defineConfig, type Plugin } from 'vite';
 import { collectOwnNames } from './scripts/ownNames.mjs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
 /** Кладёт рядом с js/css/html готовые .gz и .br версии (для nginx `gzip_static` / `brotli_static`). */
@@ -27,6 +30,37 @@ function precompress(): Plugin {
 }
 
 const ownNames = process.env.NO_OWN_MANGLE ? ['__none__'] : collectOwnNames();
+
+/** Service worker для офлайна: список файлов сборки и хеш-версия подставляются после сборки. */
+function pwa(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'pwa-sw',
+    apply: 'build',
+    configResolved(c) {
+      outDir = c.build.outDir;
+    },
+    closeBundle() {
+      if (!existsSync(outDir)) return;
+      const files: string[] = [];
+      const walk = (d: string): void => {
+        for (const f of readdirSync(d)) {
+          const p = join(d, f);
+          if (statSync(p).isDirectory()) walk(p);
+          else if (!/\.(gz|br|map)$/.test(f) && f !== 'sw.js') files.push(relative(outDir, p).split('\\').join('/'));
+        }
+      };
+      walk(outDir);
+      files.sort();
+      const hash = createHash('sha1');
+      for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)));
+      const version = hash.digest('hex').slice(0, 10);
+      const assets = ['./', ...files.map((f) => './' + f)];
+      const sw = readFileSync('scripts/swTemplate.js', 'utf8').replace('__VERSION__', version).replace('__ASSETS__', JSON.stringify(assets));
+      writeFileSync(join(outDir, 'sw.js'), sw);
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => ({
   base: './',
@@ -64,5 +98,6 @@ export default defineConfig(({ mode }) => ({
       format: { comments: false, ecma: 2022 },
     },
   },
-  plugins: [precompress()],
+  define: { __PWA__: JSON.stringify(!process.env.SINGLE_FILE), __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')) },
+  plugins: process.env.SINGLE_FILE ? [] : [precompress(), pwa()],
 }));

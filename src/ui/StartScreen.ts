@@ -4,6 +4,9 @@ import { LOCALES, getLocale, onLocaleChange, setLocale, t } from '../i18n';
 import { SaveSystem } from '../sim/SaveSystem';
 import { generateTerrain, randomStyle, STYLE_PRESETS, type TerrainStyle } from '../world/Terrain';
 import { terrainParams } from '../world/Terrain';
+import { anyCheat, CHEAT_DEFS, CHEATS_OFF, type Cheats } from '../core/cheats';
+import { fmtMoney } from '../i18n';
+import { pwa } from '../pwa';
 import { h } from './dom';
 import { drawTerrainPreview } from './terrainPreview';
 
@@ -16,6 +19,8 @@ export interface StartChoice {
   size: number;
   /** стиль ландшафта; undefined — старый генератор (сохранения прежних версий) */
   style?: TerrainStyle;
+  /** читы, выбранные на стартовом экране (или из сохранения) */
+  cheats?: Partial<Cheats>;
 }
 
 /** Размеры карты: ключ i18n и сторона в клетках. */
@@ -42,12 +47,16 @@ export function showStartScreen(root: HTMLElement, saveKey: string, audio: Audio
     let mapSize: number = 80;
     let preset: string = 'balanced';
     let style: TerrainStyle = { ...STYLE_PRESETS.balanced };
+    const cheats: Cheats = { ...CHEATS_OFF };
+    let cheatsOpen = false;
     const screen = h('div', { class: 'start' });
     const off = onLocaleChange(() => render());
+    const offPwa = pwa.onChange(() => render());
     let timer = 0;
     const seedNum = (): number => parseInt(seedInput.value, 10) || 1;
     const done = (c: StartChoice): void => {
       off();
+      offPwa();
       clearTimeout(timer);
       audio.unlock();
       screen.remove();
@@ -87,21 +96,47 @@ export function showStartScreen(root: HTMLElement, saveKey: string, audio: Audio
       return box;
     };
 
+    const cheatPanel = (): HTMLElement => {
+      const box = h('details', { class: 'cheats' });
+      if (cheatsOpen) box.setAttribute('open', '');
+      box.addEventListener('toggle', () => (cheatsOpen = box.open));
+      box.append(h('summary', { text: `🎮 ${t('start.cheats')}${anyCheat(cheats) ? ' ●' : ''}` }), h('div', { class: 'dim small', text: t('start.cheats.hint') }));
+      for (const d of CHEAT_DEFS) {
+        const label = h('div', { class: 'srow-t' }, h('b', { text: `${d.icon} ${t(`cheat.${d.id}`)}` }), h('span', { class: 'dim', text: t(`cheat.${d.id}.desc`) }));
+        if (d.kind === 'toggle') {
+          const sw = h('button', { class: `switch${cheats[d.id] ? ' on' : ''}` });
+          sw.addEventListener('click', () => {
+            (cheats[d.id] as boolean) = !cheats[d.id];
+            sw.classList.toggle('on', !!cheats[d.id]);
+            box.querySelector('summary')!.textContent = `🎮 ${t('start.cheats')}${anyCheat(cheats) ? ' ●' : ''}`;
+          });
+          box.append(h('div', { class: 'srow' }, label, sw));
+        } else {
+          const row = h('div', { class: 'chips' });
+          for (const v of d.choices) row.append(h('button', { class: `btn sm${cheats.startMoney === v ? ' active' : ''}`, text: v ? fmtMoney(v) : t('cheat.default'), onclick: () => { cheats.startMoney = v; render(); } }));
+          box.append(h('div', { class: 'srow col' }, label, row));
+        }
+      }
+      return box;
+    };
+
     const render = (): void => {
       const save = SaveSystem.peek(saveKey);
       const langs = h('div', { class: 'langs' });
       for (const l of LOCALES) langs.append(h('button', { class: `btn sm${getLocale() === l.id ? ' active' : ''}`, text: l.label, onclick: () => setLocale(l.id) }));
-      const start = (mode: 'career' | 'sandbox'): void => done({ seed: seedNum(), load: false, mode, size: mapSize, style: currentStyle() });
+      const start = (mode: 'career' | 'sandbox'): void => done({ seed: seedNum(), load: false, mode, size: mapSize, style: currentStyle(), cheats: anyCheat(cheats) ? { ...cheats } : undefined });
       const menu = h(
         'div',
         { class: 'start-box' },
         langs,
+        pwa.installable && !pwa.standalone ? h('button', { class: 'btn sm install', text: `⬇ ${t('pwa.installBtn')}`, title: t('pwa.install.hint'), onclick: () => void pwa.install() }) : null,
         h('h1', { text: t('app.title') }),
         h('p', { text: t('start.tagline') }),
-        save ? h('button', { class: 'btn big primary', text: `▶ ${t('start.continue', { year: save.time.year, pop: save.history.pop[save.history.pop.length - 1] ?? 0 })}`, onclick: () => done({ seed: save.seed, load: true, mode: save.mode ?? 'sandbox', size: save.size, style: save.ts }) }) : null,
+        save ? h('button', { class: 'btn big primary', text: `▶ ${t('start.continue', { year: save.time.year, pop: save.history.pop[save.history.pop.length - 1] ?? 0 })}`, onclick: () => done({ seed: save.seed, load: true, mode: save.mode ?? 'sandbox', size: save.size, style: save.ts, cheats: save.ch }) }) : null,
         h('div', { class: 'seedrow' }, h('span', { text: t('start.seed') }), h('div', { class: 'seedbox' }, seedInput, h('button', { class: 'btn sm', text: '🎲', title: t('start.randomSeed'), onclick: () => { seedInput.value = String(Math.floor(Math.random() * 99999)); refresh(); } }))),
         h('div', { class: 'seedrow sizerow' }, h('span', { text: t('start.mapSize') }), h('div', { class: 'sizes' }, ...MAP_SIZES.map((m) => h('button', { class: `btn sm${mapSize === m.size ? ' active' : ''}`, text: t(`start.size.${m.id}`), title: t('start.sizeHint', { n: m.size, m: m.size * 8 }), onclick: () => { mapSize = m.size; render(); } })))),
         chips(),
+        cheatPanel(),
         h('button', { class: 'btn big', text: `✨ ${t('start.new')}`, title: t('start.careerHint'), onclick: () => start('career') }),
         h('button', { class: 'btn big', text: `🏗️ ${t('start.sandbox')}`, title: t('start.sandboxHint'), onclick: () => start('sandbox') }),
         h('p', { class: 'dim small', text: t('start.modes') }),
